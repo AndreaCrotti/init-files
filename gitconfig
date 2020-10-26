@@ -1,0 +1,51 @@
+[user]
+	email = andrea.crotti.0@gmail.com
+	name = Andrea Crotti
+[color]
+	branch = auto
+	diff = auto
+	interactive = auto
+	status = auto
+	ui = auto
+[core]
+	excludesfile = /home/andrea/.gitignore
+	autocrlf = input
+
+[alias]
+	aa = add --all
+	amend = commit --amend
+	b = branch
+	br = branch
+	ci = commit
+	co = checkout
+	dc = diff --cached
+	di = diff
+	div = divergence
+	ds = diff --stat=160,120
+	fa = fetch --all
+	ff = merge --ff-only
+	pullff = pull --ff-only
+	st = status
+ 	dh1 = diff HEAD~1
+	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative 
+	#TODO: make it more interesting for example generating the pdf
+	#directly
+	graphviz = "!f() { echo 'digraph git {' ; git log --pretty='format:  %h -> { %p }' \"$@\" | sed 's/[0-9a-f][0-9a-f]*/\"&\"/g' ; echo '}'; }; f"
+
+[push]
+	default = simple
+
+[filter "media"]
+	required = true
+	clean = git media clean %f
+	smudge = git media smudge %f
+[rerere]
+	enabled = true
+[commit]
+	gpgsign = true
+
+
+# Local Variables:
+# mode: conf-unix
+# indent-tabs-mode: t
+# End:

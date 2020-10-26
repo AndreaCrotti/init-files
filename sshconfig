@@ -1,0 +1,38 @@
+# -*- mode: conf -*-
+
+Host *
+     ControlPath ~/.ssh/master-%r@%h:%p
+     ControlMaster auto
+     TCPKeepAlive yes
+     ServerAliveInterval 60
+
+Host 192.168.*.* 10.8.*.*
+     CheckHostIP=no
+     StrictHostKeyChecking=no
+
+Host github
+     User git
+     Port 22
+     HostName github.com
+     IdentityFile ~/.ssh/github
+
+Host bitbucket
+     User hg
+     Port 22
+     HostName bitbucket.org
+     IdentityFile ~/.ssh/bitbucket
+
+Host bazaar.launchpad.net
+    IdentityFile ~/.ssh/launchpad
+    User andrea-crotti-0
+
+Host nas-andrea
+     User andrea
+     Port 2222
+     HostName nas.internal
+
+Host nas-admin
+     User admin
+     Port 2222
+     HostName 192.168.0.7
+     IdentityFile ~/.ssh/local

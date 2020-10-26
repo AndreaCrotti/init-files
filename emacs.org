@@ -1,0 +1,2174 @@
+#+TITLE: My .emacs
+#+OPTIONS: toc:nil num:nil ^:nil
+#+SEQ_TODO: PROPOSED TODO STARTED | DONE DEFERRED REJECTED
+
+* Tasks
+** DONE Clean up! 
+   (especially the stuff from http://www.mygooglest.com/fni/dot-emacs.html,
+   right now at the end of the testing section)
+** DONE [#A] Outsource passwds, realname etc. to a separate file
+** DONE Split major parts in smaller bits
+** DONE Review and further clean up of [[file:~/elisp/misc/webjump-plus.el][webjump+]]
+** DONE Convert to one global-set-key style (kbd "<f10>") Style?
+** TODO Find coherent settings for F-Keys
+   Either as prefix key or for whole maps of for simple tasks (with Shift, Control, Meta for
+   closely related ones)
+** TODO Create more defalias for often used commands
+** TODO Add more links to the info pages, emacswiki etc.
+* Orgmode
+** Preliminary Setup
+#+begin_src emacs-lisp
+  (add-to-list 'auto-mode-alist '("\\.org$'" . org-mode))
+  (global-font-lock-mode 1)                     ; for all buffers
+;;  (add-hook 'org-mode-hook 'turn-on-font-lock)
+  (load-file "~/config/org-calculate-free-time.el") ;;provides sacha/org-show-load
+#+end_src
+** Capture
+#+begin_src emacs-lisp
+  (setq 
+   org-capture-templates 
+   '((("t" "Todo" entry (file+headline "~/life/organizer.org" "Inbox") "* TODO %?\n  %U\n  %i\n  %a") 
+      ("o" "Someday" entry (file+headline "~/life/organizer.org" "Inbox") "* SOMEDAY %?\n  %U\n  %i\n  %a") 
+      ("a" "Appointment" entry (file+headline "~/life/organizer.org" "Inbox") "* APPT: %?\n  %^T\n  %U\n  %i\n  %a") 
+      ("b" "Bookmark" entry (file+headline "~/life/bookmarks.org" "Inbox") "* %a %?\n  %u") 
+      ("f" "Finances TESTING!" entry (file+datetree "~/life/finances.org") "* %^{Ausgabe} %^{amount}p %^{spendtype}p %^{level}p %^g " :immediate-finish t) 
+      ("T" "test %! und %&" entry (file "~/life/organizer.org") "* Eintrag"))))
+#+end_src
+** Clock and Log
+#+begin_src emacs-lisp
+  (defun my-org-mode-ask-effort ()
+    "Ask for an effort estimate when clocking in."
+    (unless (org-entry-get (point) "Effort")
+      (let ((effort
+             (completing-read
+              "Effort: "
+              (org-entry-get-multivalued-property (point) "Effort"))))
+        (unless (equal effort "")
+          (org-set-property "Effort" effort)))))
+  (add-hook 'org-clock-in-prepare-hook 'my-org-mode-ask-effort)
+  
+  (setq org-clock-persist t)
+  (org-clock-persistence-insinuate)
+  (setq org-clock-history-length 50
+        org-clock-in-switch-to-state "STARTED"
+        org-clock-idle-time 5
+        org-log-done 'time
+        org-log-reschedule 'time
+        org-log-into-drawer "LOGBOOK")
+#+end_src
+** Agenda
+#+begin_src emacs-lisp
+  (defun my-org-auto-exclude-function (tag)
+    (and (cond
+          ((string= tag "phone") 
+           (let ((hour (nth 2 (decode-time))))
+             (or (< hour 10) (> hour 21))))
+  
+          ((string= tag "home")
+           (not(file-exists-p "/tmp/@home")))
+          
+          ((string= tag "uni")
+           (not(file-exists-p "/tmp/@uni")))
+  
+          ((string= tag "net")
+           (not (or
+                 (file-exists-p "/tmp/@uni") (file-exists-p "/tmp/@home"))))
+          )
+         (concat "-" tag)))
+  
+  (add-hook 'org-agenda-mode-hook '(lambda () (hl-line-mode 1)))
+  (setq org-agenda-ndays 1
+        org-agenda-skip-deadline-if-done t
+        org-agenda-skip-scheduled-if-done t
+        org-agenda-log-mode-items (quote (clock))
+        org-agenda-files (quote ("~/life/organizer.org"))
+        org-agenda-start-on-weekday nil
+        org-agenda-time-grid (quote ((daily weekly today require-timed) "----------------" ( 200 400 600 800 1000 1200 1400 1600 1800 2000 2200 2359))))
+  (setq org-agenda-auto-exclude-function 'my-org-auto-exclude-function)
+#+end_src
+*** Custom Agenda
+#+begin_src emacs-lisp
+
+;;
+;; So, for now, it is this one from http://thread.gmane.org/gmane.emacs.orgmode/6701/focus=6732
+;; Tag based with inheritance
+;;
+; This one works well, but is a bit slow
+(defun my-skip-by-tags (tag)
+  "Skip tasks except those that contain tag (with
+inheritance!). Useful for, e.g., listing an agenda with my (or
+someone's) tasks out of a shared folder. This is one of the main
+filtering routines for use when generating agenda views."
+  (let ((line-end (save-excursion (progn (end-of-line) (point))))) ;; return pos
+    (if (member tag (org-get-tags-at (point)))
+    nil ; do not skip
+      line-end))) ; skip, continue after that
+
+
+;; After lots of experiments, this is a clean version.
+(setq org-agenda-custom-commands                                         
+      '(("b" "Balance" 
+         ((agenda "" ((org-agenda-skip-function '(my-skip-by-tags "FUN"))(org-agenda-overriding-header "Fun: ")))
+	  (agenda "" ((org-agenda-skip-function '(my-skip-by-tags "DUTY"))(org-agenda-overriding-header "Duty: ")))
+	  (agenda "" ((org-agenda-skip-function '(my-skip-by-tags "STUDIUM"))(org-agenda-overriding-header "Studium: ")))))
+        ("w" "Tasks waiting" tags "WAITING/!")
+        ("S" "Tasks started" todo "STARTED")
+	("c" todo "DONE|DEFERRED|CANCELLED" nil)
+	("a" "My agenda"
+         ((org-agenda-list)
+	  (sacha/org-agenda-load)))
+	("A" agenda "Today's Tasks Priority #A *BETA*"
+         ((org-agenda-skip-function
+          (lambda nil
+             (org-agenda-skip-entry-if (quote notregexp) "\\=.*\\[#A\\]")))
+          (org-agenda-ndays 1)
+          (org-agenda-overriding-header "Today's Priority #A tasks: ")))
+	("u" alltodo "Unscheduled TODOs *Beta*"
+         ((org-agenda-skip-function
+          (lambda nil
+             (org-agenda-skip-entry-if (quote scheduled) (quote deadline)
+                                       (quote regexp) "<[^>\n]+>")))
+          (org-agenda-overriding-header "Unscheduled TODO entries: ")))))
+
+#+end_src
+*** Idle Agenda
+#+begin_src emacs-lisp
+
+;; From: 
+; ,----
+; | ;Message-ID: <55590EA7-C744-44E5-909F-755F0BBE452D@gmail.com>
+; | ;From: John Wiegley <jwiegley@gmail.com>
+; | ;Newsgroups: gmane.emacs.orgmode
+; | ;Subject: Displaying your Org agenda after idle time
+; `----
+
+(defun my-jump-to-org-agenda ()
+  (interactive)
+  (let ((buf (get-buffer "*Org Agenda*"))
+	wind)
+    (if buf
+	(if (setq wind (get-buffer-window buf))
+	    (select-window wind)
+	  (if (called-interactively-p)
+	      (progn
+		(select-window (display-buffer buf t t))
+		(org-fit-window-to-buffer)
+		;; (org-agenda-redo)
+		)
+	    (with-selected-window (display-buffer buf)
+	      (org-fit-window-to-buffer)
+	      ;; (org-agenda-redo)
+	      )))
+      (call-interactively 'org-agenda-list)))
+  ;;(let ((buf (get-buffer "*Calendar*")))
+  ;;  (unless (get-buffer-window buf)
+  ;;    (org-agenda-goto-calendar)))
+  )
+
+(run-with-idle-timer 300 t 'my-jump-to-org-agenda)
+
+#+end_src
+** Other
+#+begin_src emacs-lisp
+  ;;Found here: http://thread.gmane.org/gmane.emacs.orgmode/7430 
+  (defun my-org-column-cleaner (title value)
+    "Cut Years from org columview of scheduled items."
+    (cond
+     ((equal title "SCHEDULED")
+      (if (and value (>= (length value) 5))
+          (substring value 5 nil)
+        nil ; there was no value, or it was a short string
+        ))
+     (t nil)))
+  (setq org-columns-modify-value-for-display-function 'my-org-column-cleaner)
+  
+  (setq org-todo-keyword-faces '(("PROJ" :foreground "blue" :weight bold))
+        org-todo-keywords '((sequence "TODO(t)" "STARTED(s!)" "WAITING(w@/!)" "SOMEDAY(o)" "APPT(a)" "|" "DONE(d!)" "CANCELLED(c@/!)")(type "PROJ(p)" "CLOS(l!)"))
+        org-completion-use-ido t
+        org-outline-path-complete-in-steps t
+        org-global-properties (quote (("Effort_ALL" . "0:05 0:10 0:20 0:30 0:45 1:00 2:00 3:00 4:00 5:00 6:00 7:00 8:00 16:00 24:00 32:00 40:00 60:00 80:00 120:00")))
+        org-archive-default-command 'org-toggle-archive-tag
+        org-blank-before-new-entry '((heading . nil) (plain-list-item . nil))
+        org-insert-heading-respect-content t
+        org-deadline-warning-days 3
+        org-stuck-projects (quote ("/+PROJ-CLOS" ("TODO" "" "") nil "")))
+#+end_src
+** Keybindings
+#+begin_src emacs-lisp
+  (setq org-use-fast-todo-selection t
+        org-use-speed-commands t
+        org-special-ctrl-a/e t
+        org-return-follows-link t)
+
+  (define-key org-mode-map (kbd "C-'") 'other-window)                                    ;; das klappt ;)
+  (define-key org-mode-map (kbd "<f9> o") 'org-occur)
+  (define-key org-mode-map (kbd "C-c o") 'org-occur)
+  (define-key org-mode-map (kbd "C-<tab>") 'org-complete)
+  (define-key org-mode-map (kbd "M-<tab>") 'org-force-cycle-archived)
+  
+  (message "DONE - Orgmode setup") 
+#+end_src
+** Obsolete
+  (setq org-remember-templates
+   '((?t "* TODO %?\n  %U\n %i\n  %a" "~/life/organizer.org" "Inbox")
+     (?o "* SOMEDAY %?\n  %U\n %i\n  %a" "~/life/organizer.org" "Inbox")
+     (?a "* APPT: %?\n%^T\n %U\n %i\n  %a" "~/life/organizer.org" "Inbox")))
+
+;;;;;;;;;;;;;;;;;;;;; Custom AgendaViews ;;
+;;
+;;
+;; Old one. Problem: Ignores Tag inheritance!
+;;
+;; (setq org-agenda-custom-commands
+;;       '(("b" "Balance"
+;; 	 ((agenda "" 
+;; 		  ((org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":FUN:"))))
+;; 	  (agenda "" 
+;; 		  ((org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":DUTY:"))))
+;; 	  (agenda "" 
+;; 		  ((org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":STUDIUM:")))))
+;; 	 ;; add more agenda views here
+;; 	 ((org-agenda-view-columns-initially t)))))
+
+;;
+;;
+;; Tried to get this (based on categories) working. Failed miserably :(
+;;
+;; (defun org-agenda-skip-select-category-function (category-to-select)
+;;   "Creates a function suitable for use with
+;; `org-agenda-skip-function' which skips all items except for those
+;; in the provided category."
+;;   `(lambda ()
+;;     (if (equal (org-get-category) ,category-to-select)
+;;         nil ;; don't skip
+;;       ;; The invisible-ok param below seems to be needed
+;;       ;; in order to avoid infinite loops:
+;;       (org-end-of-subtree t))))
+;;
+;; (setq org-agenda-custom-commands
+;;        '(("b" "Balance"
+;;  	 ((agenda "" 
+;;  		  (org-agenda-skip-function '(org-agenda-skip-select-category-function ":FUN:")))
+;;  	  (agenda "" 
+;;  		  (org-agenda-skip-function '(org-agenda-skip-select-category-function ":DUTY:")))
+;;  	  (agenda "" 
+;;  		  (org-agenda-skip-function '(org-agenda-skip-select-category-function ":MAG:")))))))
+
+;; (setq org-agenda-custom-commands                                         
+;;       '(("b" "Balance" 
+;;          ((agenda "" ((org-agenda-skip-function '(my-skip-by-tags "FUN"))(org-agenda-overriding-header "Fun: ")))
+;; 	  (agenda "" ((org-agenda-skip-function '(my-skip-by-tags "DUTY"))(org-agenda-overriding-header "Duty: ")))                      
+;; 	  (agenda "" ((org-agenda-skip-function '(my-skip-by-tags "STUDIUM"))(org-agenda-overriding-header "Studium: ")))
+;; ;        ((org-agenda-view-columns-initially t)))
+;;         )
+;;         ("w" "Tasks waiting on something" tags "WAITING/!")
+;;         ("s" "Started Tasks" todo "STARTED")
+;;         ("h" "Habits" tags "STYLE=\"habit\"")
+;; ;       ("1" "Export Daily Agenda" agenda ""
+;; ;          ((org-agenda-ndays 1)
+;; ;	   (org-agenda-repeating-timestamp-show-all t)
+;; ;	   (org-agenda-log-mode t))
+;; ;	 nil 
+;; ;	 ("~/tmp/txt/homepage/agenda-daily.html"))
+;; ;        ("2" "Export Daily Agenda" agenda ""
+;; ;           ((org-agenda-ndays 7)
+;; ;        	   (org-agenda-repeating-timestamp-show-all t)
+;; ;        	   (org-agenda-log-mode t))
+;; ;        	 nil 
+;; ;        	 ("~/txt/homepage/agenda-weekly.html"))
+;; ;         ("3" "Export Daily Agenda" agenda ""
+;; ;            ((org-agenda-ndays 30)
+;; ;         	   (org-agenda-repeating-timestamp-show-all t)
+;; ;         	   (org-agenda-log-mode t))
+;; ;         	 nil 
+;; ;         	 ("~/agenda-monthly.html"))
+;;        ))
+* Appt
+#+begin_src emacs-lisp
+  ;; Get appointments for today
+  (defun my-org-agenda-to-appt ()
+    (interactive)
+    (setq appt-time-msg-list nil)
+    (org-agenda-to-appt))
+  
+  ;; Update appt each time agenda opened.
+  (add-hook 'org-finalize-agenda-hook 'my-org-agenda-to-appt)
+  
+  ;; Run once, activate and schedule refresh
+  (my-org-agenda-to-appt)
+  (appt-activate t)
+  (run-at-time "24:01" nil 'my-org-agenda-to-appt)
+  
+                                          ; 5 minute warnings
+  (setq appt-message-warning-time 15
+        appt-display-interval 5)
+
+  (message "DONE - APPT setup") 
+#+end_src
+* W3M
+** Preliminary Setup
+#+begin_src emacs-lisp
+  (add-to-list 'load-path "~/elisp/misc")
+  (require 'w3m-load)
+#+end_src
+** Setup
+#+begin_src emacs-lisp
+  (setq w3m-key-binding 'info
+        browse-url-browser-function 'browse-url-generic
+        browse-url-generic-program "/usr/bin/conkeror"
+        w3m-use-cookies t
+        browse-url-browser-function 'w3m-browse-url browse-url-new-window-flag t
+        w3m-search-default-engine "scroogle"
+        w3m-home-page "http://www.emacswiki.org/"
+        w3m-user-agent ""
+        w3m-add-user-agent t
+        w3m-use-tab nil
+        w3m-use-title-buffer-name t)
+#+end_src
+** W3m-Search
+#+begin_src emacs-lisp
+  (require 'w3m-search)
+  (eval-after-load "w3m-search"
+    '(progn
+       (add-to-list 'w3m-search-engine-alist
+                    '("wikipedia" "http://en.wikipedia.org/wiki/Special:Search?search=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`w:" w3m-search-uri-replace "wikipedia"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("google-groups" "http://www.google.com/groups?q=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`gg:" w3m-search-uri-replace "google-groups"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("wikipedia-de" "http://de.wikipedia.org/wiki/Special:Search?search=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`wd:" w3m-search-uri-replace "wikipedia-de"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("imdb" "http://www.youtube.com/results?search_query=%s&search=Search" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`i:" w3m-search-uri-replace "imdb"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("leo" "http://pda.leo.org/?lp=ende&lang=de&searchLoc=0&cmpType=relaxed&relink=on&sectHdr=off&spellToler=std&search=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`l:" w3m-search-uri-replace "leo"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("scroogle" "https://ssl.scroogle.org/cgi-bin/nbbwssl.cgi?Gw=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`g:" w3m-search-uri-replace "scroogle"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("deb" "http://packages.debian.org/search?keywords=%s&searchon=names&suite=unstable&section=all" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`d:" w3m-search-uri-replace "deb"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("debfile" "http://packages.debian.org/search?searchon=contents&keywords=%s&mode=path&suite=unstable&arch=any" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`df:" w3m-search-uri-replace "debfile"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("debbugs" "http://bugs.debian.org/%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`db:" w3m-search-uri-replace "debbugs"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("debpts" "http://packages.qa.debian.org/%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`dp:" w3m-search-uri-replace "debpts"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("emacswiki" "http://www.emacswiki.org/cgi-bin/wiki.pl?search=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`e:" w3m-search-uri-replace "emacswiki"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("duckduckgo" "http://duckduckgo.com/?q=%s" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`ddg:" w3m-search-uri-replace "duckduckgo"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("georges L-D" "http://www.zeno.org/Zeno/0/Suche?q=%s&k=Georges-1913" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`gld:" w3m-search-uri-replace "georges l-d"))
+  
+       (add-to-list 'w3m-search-engine-alist
+                    '("georges D-L" "http://www.zeno.org/Zeno/0/Suche?q=%s&k=Georges-1910" nil))
+       (add-to-list 'w3m-uri-replace-alist
+                    '("\\`gdl:" w3m-search-uri-replace "georges d-l"))))
+#+end_src
+** W3m-Webjump
+#+begin_src emacs-lisp
+
+(require 'webjump-plus)
+(setq webjump-sites
+      (append '(
+                ("Wikipedia" . [simple-query "en.wikipedia.org" "http://en.wikipedia.org/wiki/Special:Search?search=" ""])
+		("Leo" . [simple-query "pda.leo.org" "http://pda.leo.org/?lp=ende&lang=de&searchLoc=0&cmpType=relaxed&relink=on&sectHdr=off&spellToler=std&search=" ""])
+		("Scroogle" . [simple-query "ssl.scroogle.org" "https://ssl.scroogle.org/cgi-bin/nbbwssl.cgi?Gw=" ""])
+		("Debian Packages" . [simple-query "packages.debian.org" "http://packages.debian.org/search?keywords="
+		                                                         "&searchon=names&suite=unstable&section=all"])
+		("Debian File" . [simple-query "packages.debian.org" "http://packages.debian.org/search?searchon=contents&keywords="
+		                                                     "&mode=path&suite=unstable&arch=any"])
+		("Debian PTS" . [simple-query "packages.qa.debian.org" "http://packages.qa.debian.org/" ""])
+		("GLD" . [simple-query "zeno.org" "http://www.zeno.org/Zeno/0/Suche?q=" "&k=Georges-1913"])
+		("GDL" . [simple-query "zeno.org" "http://www.zeno.org/Zeno/0/Suche?q=" "&k=Georges-1910"])
+		("DDG" . [simple-query "duckduckgo.com" "http://duckduckgo.com/?q=" ""])
+                )
+              webjump-plus-sites
+              webjump-sample-sites))
+
+#+end_src
+** W3m-Session
+#+begin_src emacs-lisp
+  (require 'w3m-session)
+  (setq w3m-session-file "~/.emacs.d/w3m-session"
+        w3m-session-save-always t
+        w3m-session-deleted-save 1
+        w3m-session-automatic-save 1
+        w3m-session-load-always t
+        w3m-session-load-last-sessions 1
+        w3m-session-crash-recovery 1
+        w3m-session-load-crashed-sessions 1
+        w3m-session-show-titles t
+        w3m-session-duplicate-tabs 'ask) ;  'never, 'always, 'ask
+#+end_src
+** Keybindings
+#+begin_src emacs-lisp
+  (define-key w3m-mode-map "f" 'w3m-go-to-linknum)
+  (define-key w3m-mode-map "." 'w3m-next-buffer)
+  (define-key w3m-mode-map "," 'w3m-previous-buffer)
+  (define-key w3m-mode-map "r" 'w3m-reload-this-page)
+  (define-key w3m-mode-map "R" 'w3m-redisplay-this-page)
+  (define-key w3m-mode-map (kbd "<delete>") 'w3m-delete-buffer)
+  (define-key w3m-mode-map (kbd "<deletechar>") 'w3m-delete-buffer)
+  (define-key w3m-mode-map "l" 'w3m-select-buffer)
+
+  (message "DONE - W3M setup") 
+#+end_src
+** Obsolete
+;  (autoload 'wget "wget" "wget interface for Emacs." t)
+;  (autoload 'wget-web-page "wget" "wget interface to download whole web page." t)
+  
+  ; c.) Setting for Web browser on Emacs:
+  ; c-1.) With emacs-w3m, put the following code into your .emacs:
+  
+;	(setq wget-download-directory "~/tmp/")
+;	(setq wget-download-log-file "~/.emacs.d/wget-log.txt")
+
+;  (load "w3m-wget")
+;  (require 'wget-extension)
+; (require 'w3m-lnum)
+; (defun my-w3m-go-to-linknum ()
+;     "Turn on link numbers and ask for one to go to."
+;     (interactive)
+;     (let ((active w3m-link-numbering-mode))
+;       (when (not active) (w3m-link-numbering-mode))
+;       (unwind-protect
+;           (w3m-move-numbered-anchor (read-number "Anchor number: "))
+;         (when (not active) (w3m-link-numbering-mode)))))
+
+
+;; Gnus ignores browse-url, so I have to add the check here
+;; cf. http://www.carcosa.net/jason/blog/computing/gnus-w3m-2009-07-02-07-30
+;(defun my-choose-browser (&optional url &rest args)
+;  (interactive)
+;  (if (y-or-n-p "Use external browser? ")
+;      (if (equal (face-at-point) 'w3m-anchor)        ; Gnus?
+;	  (w3m-view-url-with-external-browser url)   ; Yes.
+;	(browse-url-generic url))
+;    (w3m-browse-url url t)))
+
+;(setq browse-url-browser-function 'my-choose-browser)
+
+;;  ; Follow links in w3m with browse-url:
+;;  (add-hook 'gnus-article-mode-hook
+;;            (lambda ()
+;;              (set (make-local-variable 'w3m-goto-article-function)
+;;                   'browse-url)))
+
+;;;;;;;;;;;;;;; Settings wget
+;; NOTE: gemäß anleitung: muss das sein?
+;(autoload 'wget "wget" "wget interface for Emacs." t)
+;(autoload 'wget-web-page "wget" "wget interface to download whole web page." t)
+;(load "w3m-wget")
+* BBDB
+#+begin_src emacs-lisp
+  (require 'bbdb)
+  (require 'bbdb-anniv)
+  (bbdb-initialize 'gnus 'message)
+  (bbdb-insinuate-w3)
+  
+  ;; leo setup for integration of bbdb and w3m integrate with bbdb
+  ;; Found here: http://www.emacswiki.org/emacs/BbdbConfiguration
+  ;; (define-key w3m-mode-map ":" 'my-bbdb-www-grab-homepage-w3m)
+  ;; Based on `bbdb-www-grab-homepage'
+  (defun my-bbdb-www-grab-homepage-w3m (record)
+    "Grab the current URL and store it in the bbdb database"
+    (interactive (list (bbdb-completing-read-one-record
+                        "Add WWW homepage for: ")))
+    ;; if there is no database record for this person, create one
+    (unless record
+      (setq record (bbdb-read-new-record))
+      (bbdb-invoke-hook 'bbdb-create-hook record))
+    (if (bbdb-record-getprop record 'www)
+        (bbdb-record-putprop
+         record 'www
+         (concat (bbdb-record-getprop record 'www) "," w3m-current-url))
+      (bbdb-record-putprop record 'www w3m-current-url))
+    (bbdb-change-record record t)
+    (bbdb-display-records (list record)))
+  
+  (defadvice bbdb-read-new-record (after wicked activate)
+    "Prompt for the birthdate as well."
+    (bbdb-record-putprop ad-return-value 'anniversary
+                         (bbdb-read-string "Birthdate (YYYY-MM-DD): ")))
+  
+  (add-hook 'gnus-startup-hook 'bbdb-insinuate-gnus)
+  (add-hook 'list-diary-entries-hook 'bbdb-include-anniversaries)
+  
+  (setq bbdb-use-pop-up nil
+        bbdb-north-american-phone-numbers-p nil
+        bbdb-popup-target-lines  2               ; very small
+        bbdb-dwim-net-address-allow-redundancy t ; always use full name
+        bbdb-quiet-about-name-mismatches 2       ; show name-mismatches 2 secs
+        ;;bbdb-always-add-address t               ; add new addresses to existing...
+        ;;bbdb-canonicalize-redundant-nets-p t    ; x@foo.bar.cx => x@bar.cx
+        bbdb-completion-type nil                 ; complete on anything
+        bbdb-complete-name-allow-cycling t       ; cycle through matches
+                                          ; this only works partially
+        ;;bbbd-message-caching-enabled t          ; be fast
+        bbdb-use-alternate-names t               ; use AKA
+        bbdb-elided-display t                    ; single-line addresses
+        bbdb-ignore-some-messages-alist '(("From" . "*bozo@dev.null.invalid"))
+        )
+  
+  (message "DONE - BBDB setup") 
+#+end_src
+* EMMS
+#+begin_src emacs-lisp
+  ;  (add-to-list 'load-path "~/elisp/emms/")
+    (require 'emms-setup)
+    (require 'emms-player-simple)
+    (require 'emms-source-file)
+    (require 'emms-source-playlist)
+    (require 'emms-mode-line)
+    (require 'emms-playing-time)
+    (require 'emms-tag-editor)
+    
+    (defun my-emms-display-video-toggle ()
+      "Control videoutput of emms by toggle my-emms-display-video (true/nil)"
+      (interactive)
+      (setq my-emms-display-video (if (eq my-emms-display-video t) nil t)) ;; toggle variable
+      (message "Display Video is set to %s" my-emms-display-video)
+      (if (eq my-emms-display-video nil)                                   ;; if nil
+          (setq emms-player-mplayer-parameters                             ;; no video please
+                (add-to-list 'emms-player-mplayer-parameters "-novideo"))  
+        (setq emms-player-mplayer-parameters                               ;; else
+              (remove "-novideo" emms-player-mplayer-parameters))))      ;; video, please
+    ;; Variable 'my-emms-display-video' 
+  
+    (emms-all)
+    (emms-default-players)
+    (emms-mode-line 0)
+    (emms-playing-time 1)
+    
+    ;; added .flv .ogv to the list ;)
+    (define-emms-simple-player mplayer '(file url)
+      (regexp-opt '(".ogg" ".mp3" ".wav" ".mpg" ".mpeg" ".wmv" ".wma"
+                    ".mov" ".avi" ".divx" ".ogm" ".asf" ".mkv" "http://" "mms://"
+                    ".rm" ".rmvb" ".mp4" ".flac" ".vob" ".m4a" ".flv" ".ogv" ".pls"))
+      "mplayer" "-slave" "-quiet" "-really-quiet")
+  
+  
+    (setq emms-source-file-default-directory "~/"
+          emms-source-playlist-default-directory "~/"
+          emms-playlist-default-major-mode 'emms-playlist-mode
+          emms-playlist-buffer-name "*Music*")
+    (setq emms-player-list '(emms-player-mpg321
+                             emms-player-ogg123
+                             emms-player-mplayer))
+    (setq my-emms-display-video nil)  
+  
+    (message "DONE - EMMS setup") 
+#+end_src
+** Obsolete
+;; activate seeking for mpg321
+;(require 'emms-player-mpg321-remote)
+;(push 'emms-player-mpg321-remote emms-player-list)
+* ERC
+#+begin_src emacs-lisp
+  (require 'erc)
+  (add-hook 'erc-mode-hook (lambda () (abbrev-mode 1)))
+  (add-hook 'erc-join-hook 'bitlbee-identify)
+  (add-hook 'erc-text-matched-hook 'my-erc-text-matched)
+  (add-hook 'erc-server-PRIVMSG-functions 'my-erc-PRIVMSG)
+  (add-hook 'erc-track-list-changed-hook 'my-erc-track)
+  
+  (defun my-erc-match-keyword-sound-and-highlight-p (nickuserhost msg)
+    "Check whether any keyword of `my-erc-keyword-sound-and-highlight' matches for MSG.
+        NICKUSERHOST will be ignored."
+    (and msg
+         (erc-list-match
+          (mapcar (lambda (x)
+                    (if (listp x)
+                        (car x)
+                      x))
+                  my-erc-keyword-sound-and-highlight)
+          msg)))
+  
+  (defun my-erc-text-matched (match-type nick message)
+    (interactive)
+    (when (or (and (erc-away-time)                                           ; I am away AND
+                   (eq match-type 'keyword))                                 ; a keyword is said OR
+              (my-erc-match-keyword-sound-and-highlight-p nick message))     ; Soundtrigger 
+      (my-thinklight-control "on")
+      (start-process-shell-command "whatever" nil "mplayer ~/archive/music/sound.mp3")))  ; Play Sound
+  
+  (defun my-erc-PRIVMSG (proc parsed)
+    (let ((nick (car (erc-parse-user (erc-response.sender parsed))))
+          (target (car (erc-response.command-args parsed)))
+          (msg (erc-response.contents parsed)))
+      (when (and (erc-away-time)
+                 (erc-current-nick-p target)                                 
+                 (not (erc-is-message-ctcp-and-not-action-p msg)))
+        (my-thinklight-control "on")
+        (start-process-shell-command "whatever" nil "mplayer ~/archive/music/sound.mp3")
+        nil)))
+  
+  ;; use /flush in buffer
+  ;; From: http://www.emacswiki.org/emacs/ErcTruncation
+  (defun my-erc-flush-buffer (&rest ignore)
+    "Erase the current buffer."
+    (let ((inhibit-read-only t))
+      (buffer-disable-undo)
+      (erase-buffer)
+      (buffer-enable-undo)
+      (message "Flushed contents of channel")
+      p       t))
+  
+  (defun bitlbee-identify ()
+    "If we're on the bitlbee server, send the identify command to the 
+         &bitlbee channel."
+    (when (and (string= "localhost" erc-session-server)
+               (string= "&bitlbee" (buffer-name)))
+      (erc-message "PRIVMSG" (format "%s identify %s" 
+                                     (erc-default-target) 
+                                     my-bitlbee-passw))))
+  
+  (defun my-erc-track ()
+    (interactive)
+    (if erc-modified-channels-alist                                                    ; Is there something to track?
+        (unless (get-process "my-thinklight-blinky")
+          (start-process-shell-command "my-thinklight-blinky" nil "blink-thinklight.sh")) ; Yes: Start blinking thinklight
+      (when (get-process "my-thinklight-blinky")                                       ; No: Stop thinklight 
+        (kill-process "my-thinklight-blinky")
+        (my-thinklight-control "off"))))
+  
+  (defun my-thinklight-control (cmd)
+    "Turn ThinkLight on/off, depending on the value of the string cmd: [on|off]"
+    (condition-case nil
+        (write-region cmd nil "/proc/acpi/ibm/light" nil 1 nil nil)
+      (error nil)))
+    
+  (setq erc-autoaway-idle-seconds 600
+        erc-autoaway-message "Autoaway after %i seconds of idletime. Want my attention? Say 'moin' !"
+        erc-autoaway-idle-method 'user
+        erc-track-faces-priority-list
+        '(erc-keyword-face erc-pal-face)
+        erc-keywords (append my-erc-keyword-sound-and-highlight my-erc-keyword-highlight)    
+        erc-keyword-highlight-type 'all
+        erc-pal-highlight-type 'all
+        erc-track-exclude-types '("NICK" "MODE")
+        erc-track-priority-faces-only 'all
+        erc-track-exclude-server-buffer t)
+  ;; Join the several channel automagically
+  (setq erc-autojoin-channels-alist 
+        '(("oftc.net" "#debian" "#bitlbee")
+          ("freenode.net" "#emacs" "#debian")))
+  
+                                          ;    (defvar bitlbee-password my-bitlbee-passw)
+  (message "DONE - ERC setup") 
+#+end_src
+* Completion
+** Ido
+#+begin_src emacs-lisp
+  (require 'ido)
+  (ido-mode t)
+  (ido-everywhere t)
+  (setq ido-enable-flex-matching t
+        confirm-nonexistent-file-or-buffer nil)
+  (message "DONE - IDO setup") 
+#+end_src
+** Hippie
+#+begin_src emacs-lisp
+(setq hippie-expand-try-functions-list
+      '(yas/hippie-try-expand 
+        try-expand-dabbrev
+        try-expand-dabbrev-all-buffers
+        try-expand-dabbrev-from-kill
+        try-complete-file-name
+        try-complete-lisp-symbol))
+  
+  (message "DONE - HIPPIE setup") 
+#+end_src
+* Dictem
+#+begin_src emacs-lisp
+  (require 'dictem)
+
+  (defun dictem-highlight-man-definition ()
+    (cond ((string= "man" dictem-current-dbname)
+           (goto-char (point-min))
+           (while (search-forward-regexp "^  " nil t)
+             (replace-match ""))
+           (goto-char (point-min))
+           (forward-line 2)
+           (woman-decode-region (point) (point-max))
+           )))
+
+  (dictem-initialize)
+
+  (add-hook 'dictem-postprocess-match-hook
+            'dictem-postprocess-match)
+  (add-hook 'dictem-postprocess-definition-hook 
+            'dictem-postprocess-definition-separator)
+  (add-hook 'dictem-postprocess-show-info-hook
+            'dictem-postprocess-definition-hyperlinks)
+  (add-hook 'dictem-postprocess-definition-hook
+            'dictem-postprocess-each-definition)
+  
+  
+  (add-hook 'dictem-postprocess-each-definition-hook 
+            'dictem-highlight-susv3-definition)
+  (add-hook 'dictem-postprocess-each-definition-hook 
+            'dictem-highlight-man-definition)
+  
+  (add-hook 'dictem-postprocess-definition-hook 
+            'dictem-postprocess-definition-hyperlinks)
+  
+  (message "DONE - DICTEM setup") 
+#+end_src
+* RS-BOXQUOTE
+#+begin_src emacs-lisp
+  ;; Found here: http://theotp1.physik.uni-ulm.de/~ste/comp/emacs/misc/rs-info.el
+  (autoload 'rs-info-insert-current-node "rs-info"
+    "Insert reference to current Info node using STYLE in buffer." t nil)
+  (autoload 'rs-info-boxquote "rs-info"
+    "Yank text (from an info node), box it and use current info node as title."
+    t nil)
+  (autoload 'rs-info-reload "rs-info" "Reload current info node." t nil)
+  (autoload 'rs-info-insert-node-for-variable "rs-info"
+    "Insert a custom style info node for the top level form at point." t nil)
+  (defalias 'boxquote-info 'rs-info-boxquote)
+#+end_src
+* YAsnippet
+#+begin_src emacs-lisp
+  ;;(add-to-list 'load-path (expand-file-name "~/.emacs.d/plugins"))
+  (add-to-list 'load-path "~/.emacs.d/plugins")
+  
+  (require 'yasnippet)
+  (yas/initialize)
+  (yas/load-directory "~/.emacs.d/plugins/yasnippet/snippets")
+  
+  ;; Make TAB the yas trigger key in the org-mode-hook and turn on flyspell mode
+  (add-hook 'org-mode-hook
+            (lambda ()
+              ;; yasnippet
+              (make-variable-buffer-local 'yas/trigger-key)
+              (setq yas/trigger-key [tab])
+              (define-key yas/keymap [tab] 'yas/next-field-group)
+  ;;;         (define-key yas/keymap [tab] 'hippie-expand)
+  ;;;         flyspell mode to spell check everywhere
+  ;;;         (flyspell-mode 1)
+              ))
+  
+  (message "DONE - yasnippet setup") 
+#+end_src
+* DIRED
+#+begin_src emacs-lisp
+  (require 'dired-details)
+  (require 'ls-lisp)
+  
+  (dired-details-install)
+  
+  (add-hook 'dired-load-hook
+            (lambda ()
+              (load "dired-x")
+              ;; Set dired-x global variables here.  For example:
+              ;; (setq dired-guess-shell-gnutar "gtar")
+              ;; (setq dired-x-hands-off-my-keys nil)
+              ))
+  (add-hook 'dired-mode-hook
+            (lambda ()
+              ;; Set dired-x buffer-local variables here.  For example:
+              ;; (dired-omit-mode 1)
+              ))
+  
+  (setq dired-listing-switches "-lh"
+        dired-recursive-deletes 'top
+        dired-recursive-copies 'always
+        ls-lisp-use-insert-directory-program nil
+        ls-lisp-dirs-first t
+        ls-lisp-ignore-case t)
+  (setq dired-guess-shell-alist-user '(("\\.pdf$" "xpdf * &")
+                                       ("\\.rar$" "unrar x")
+                                       ("\\.html?$" "iceweasel")
+                                       ("\\.mp3$" "mpg321 * &")
+                                       ("\\.mp4$" "mplayer -fs * &")
+                                       ("\\.flv$" "mplayer -fs * &")
+                                       ))
+  (put 'dired-find-alternate-file 'disabled nil)
+  ;; I like the GNU way of dir display (links uid gid)
+  ;;(setq ls-lisp-verbosity '(links uid gid))
+  
+  ;;; Toggle Showing of dotfiles
+  (define-key dired-mode-map "."
+    (lambda ()
+      (interactive)
+      (dired-sort-other
+       (if (equal dired-actual-switches "-l") "-al" "-l"))))
+  
+  ;; (add-hook 'dired-mode-hook
+  ;;  (lambda ()
+  ;;   (define-key dired-mode-map (kbd "<return>")
+  ;;     'dired-find-alternate-file) ; was dired-advertised-find-file
+  ;;   (define-key dired-mode-map (kbd "^")
+  ;;     (lambda () (interactive) (find-alternate-file "..")))
+  ;;   ; was dired-up-directory
+  ;;  ))
+  
+  (define-key dired-mode-map "e" 'emms-play-dired)
+  (define-key dired-mode-map "E" 'emms-add-dired)
+  (define-key dired-mode-map "r" 'wdired-change-to-wdired-mode)
+  (define-key dired-mode-map "b" 'browse-url-of-dired-file)
+  
+  (message "DONE - DIRED setup") 
+#+end_src
+* Ibuffer
+#+begin_src emacs-lisp
+  (require 'ibuffer)
+  ;;(autoload 'ibuffer "ibuffer" "List buffers." t)
+  
+  (defun my-ibuffer-toggle-all-filters ()
+    "A little buggy!"
+    (interactive)
+    (save-excursion
+      (if (not (eq major-mode 'ibuffer-mode))
+          nil
+        (progn
+          (goto-char 0)
+          (setq prev-point 0)
+          (while (< prev-point (point))
+            (setq prev-point (point))
+            (ibuffer-forward-filter-group)
+            (ibuffer-toggle-filter-group))))))
+  
+  (add-hook 'ibuffer-mode-hook
+            (lambda ()
+              (ibuffer-switch-to-saved-filter-groups "default")))
+  
+  (setq ibuffer-saved-filter-groups 
+        '(("default"
+           ("Chat" (or (mode . erc-mode)))
+           ("Org-anization" (or (mode . org-agenda-mode)              
+                                (mode . org-mode)
+                                (name . "organizer.org")
+                                (name . "finances.org")
+                                (name . "bookmarks.org")
+                                ;;(mode . diary-mode)
+                                ;;(name . "^\\.tex$")
+                                (filename .".tex")
+                                (filename . ".org")))
+           ("Gnus" (or (mode . message-mode)
+                       (mode . bbdb-mode)
+                       (mode . mail-mode)
+                       (mode . gnus-group-mode)
+                       (mode . gnus-summary-mode)
+                       ;;("Files" (filename . ".*")
+                       (mode . gnus-article-mode)))
+           
+           ("Multimedia" (or (mode . emms-playlist-mode)
+                             (mode . emms-browser-mode)))
+           ("System" (or (mode . eshell-mode)
+                         (mode . term-mode)    
+                         (name . "^\\*tramp")
+                         (mode . shell-mode)))
+           ("Web" (or (mode . w3m-mode)))
+           ("Dired" (or (mode . dired-mode)))
+           ("Emacs & Documentation" (or (mode . emacs-lisp-mode)
+                                        (mode . Info-mode)
+                                        (mode . apropos-mode)
+                                        (mode . woman-mode)
+                                        (mode . help-mode)
+                                        (mode . Man-mode)
+                                        (mode . Anything)
+                                        (mode . Custom)
+                                        (name . "^\\*Completions\\*$")
+                                        (name . "^\\*anything\\*$")
+                                        (name . "^\\*Kill Ring\\*$")
+                                        (name . "^\\.bbdb$")
+                                        (name . "^\\.newsrc-dribble")
+                                        (name . "^\\*scratch\\*$")
+                                        (name . "^\\*Compile-Log\\*$")
+                                        (name . "^\\*WoMan-Log\\*$")
+                                        (name . "^\\*Calendar\\*$")
+                                        (name . "^\\*Messages\\*$"))))))
+  
+  (global-set-key (kbd "C-x C-b") 'ibuffer)
+  (define-key ibuffer-mode-map "\C-n" 'ibuffer-forward-filter-group)
+  (define-key ibuffer-mode-map "\C-p" 'ibuffer-backward-filter-group)
+  (define-key ibuffer-mode-map "\M-n" 'next-line)
+  (define-key ibuffer-mode-map "\M-p" 'previous-line)
+  
+  (message "DONE - IBUFFER setup") 
+#+end_src
+* Anything
+#+begin_src emacs-lisp
+  ;;(setq load-path (cons "~/elisp/anything-config" load-path))
+  (add-to-list 'load-path "~/elisp/anything-config")
+  (require 'anything-config)
+  
+  (defun my-anything ()
+    (interactive)
+    (anything-other-buffer
+     '(anything-c-source-buffers
+       anything-c-source-buffer-not-found
+       anything-c-source-file-name-history
+       anything-c-source-bbdb
+       anything-c-source-kill-ring
+       anything-c-source-mark-ring
+       anything-c-source-global-mark-ring
+       anything-c-source-emacs-commands
+       anything-c-source-info-pages
+       anything-c-source-info-elisp
+       anything-c-source-man-pages
+       anything-c-source-locate
+       anything-c-source-org-headline)
+     " *Anything*"))
+
+     
+  (defun my-anything-everything ()
+    (interactive)
+    (anything-other-buffer
+     '(anything-c-source-buffers
+       anything-c-source-buffer-not-found
+       anything-c-source-file-name-history
+       anything-c-source-bbdb
+       anything-c-source-kill-ring
+       anything-c-source-mark-ring
+       anything-c-source-global-mark-ring
+       anything-c-source-emacs-commands
+       anything-c-source-info-pages
+       anything-c-source-info-elisp
+       anything-c-source-man-pages
+       anything-c-source-locate
+       anything-c-source-emms-dired
+       anything-c-source-apt            ; Slows down too much, use M-x anything-apt instead!
+       anything-c-source-org-headline
+       anything-c-source-w3m-bookmarks
+       anything-c-source-colors
+       anything-c-source-top)
+     " *Anything-Everything*"))
+  
+  (setq anything-samewindow t)
+  
+  (message "DONE - ANYtHING setup") 
+#+end_src
+* VC
+#+begin_src emacs-lisp
+  (setq vc-handled-backends '(Hg Bzr Git)
+        vc-follow-symlinks nil
+        ;;vc-handled-backends (quote (Hg))
+        vc-make-backup-files t)
+  
+  (message "DONE - VC setup") 
+#+end_src
+* Calendar
+#+begin_src emacs-lisp
+  (setq european-calendar-style t             ; obsolete!
+        calendar-date-style 'european
+;        calendar-latitude                  ;; privacy.el
+;        calendar-longitude                 ;; privacy.el
+        calendar-week-start-day 1
+        mark-holidays-inv-calendar t
+  ;; show all the holidays that would appear in a complete Christian calendar
+        all-christian-calendar-holidays t
+  ;; remove some holidays
+        general-holidays nil   ; get rid of too U.S.-centric holidays
+        hebrew-holidays nil    ; get rid of religious holidays
+        islamic-holidays nil   ; get rid of religious holidays
+        oriental-holidays nil  ; get rid of Oriental holidays
+        bahai-holidays nil)     ; get rid of Baha'i holidays
+  
+  ;; add Belgian holidays
+  (setq local-holidays
+        '((holiday-fixed 01 01 "New Year's Day")
+          (holiday-fixed 02 14 "Valentine's Day")
+          (holiday-fixed 04 01 "April Fools' Day")
+          (holiday-fixed 05 01 "Labor Day")
+          (holiday-fixed 07 21 "Independence Day")
+          (holiday-fixed 08 15 "Assumption")
+          (holiday-fixed 10 31 "Halloween")
+          (holiday-fixed 11 01 "Toussaint")
+          (holiday-fixed 11 11 "Armistice 1918")
+          (holiday-fixed 12 25 "Christmas")
+          ;; holidays with variable dates
+          (holiday-float 5 0 2 "Mother's Day")
+          (holiday-float 6 0 3 "Father's Day")))
+  
+  (message "DONE - CALENDAR setup") 
+#+end_src
+* Keybindings
+#+begin_src emacs-lisp
+  ;; Found here:  http://github.com/technomancy/emacs-starter-kit/blob/476c8a88eb68b9f3923da23b76df1986347dfe5b/starter-kit-defuns.el
+  (defun my-switch-or-start (function buffer)
+    "If the buffer is current, bury it, otherwise invoke the function."
+    (if (equal (buffer-name (current-buffer)) buffer)
+        (bury-buffer)
+      (if (get-buffer buffer)
+          (switch-to-buffer buffer)
+        (funcall function))))
+  
+  ;; FN Key as M-x
+  (global-set-key (kbd "<f15>") 'execute-extended-command)
+  (global-set-key (kbd "<delete>") 'kill-this-buffer)
+  (global-set-key (kbd "<deletechar>") 'kill-this-buffer)
+  (global-set-key "\C-w" 'backward-kill-word)
+  (global-set-key (kbd "C-;") 'delete-other-windows)
+  (global-set-key (kbd "C-'") 'other-window)
+  ;;(global-set-key (kbd "C-h") 'backward-delete-char-untabify)
+  (global-set-key (kbd "C-h") 'ido-switch-buffer)
+  (global-set-key (kbd "<C-tab>") 'hippie-expand)
+  (global-set-key "\M-p" 'backward-paragraph)
+  (global-set-key "\M-n" 'forward-paragraph)
+  (global-set-key [M-backspace] 'backward-kill-sentence)
+  (global-set-key "\M-/" 'hippie-expand)
+  
+  
+  
+  (global-set-key "\C-cl" 'org-store-link)
+  (global-set-key "\C-ca" 'org-agenda)
+  (global-set-key "\C-cb" 'org-iswitchb)
+  (define-key global-map "\C-cc" 'org-capture) 
+  (global-set-key (kbd "C-c e") 
+                  (lambda () (interactive) 
+                    (my-switch-or-start (lambda () 
+                                          (erc :server "localhost" :port "6667" :nick my-bitlbee-nick)) "&bitlbee")))
+  (define-key global-map "\C-cf" 'org-open-at-point)
+  (global-set-key (kbd "C-c g") (lambda () (interactive) (my-switch-or-start 'gnus "*Group*")))
+  (global-set-key "\C-cq" 'boxquote-region)
+  (global-set-key (kbd "C-c s") (lambda () (interactive) (my-switch-or-start 'eshell "*eshell*")))
+  (global-set-key "\C-xj" 'dired-jump)
+  
+  (global-set-key "\C-x\C-k" 'kill-region)
+  (global-set-key "\C-c\C-k" 'kill-region)
+  (global-set-key (kbd "C-x M-b") 'bs-show)
+  
+  (global-set-key (kbd "<f9> a") 'org-agenda)
+  (global-set-key (kbd "<f9> b") 'bbdb)
+  (global-set-key (kbd "<f9> c") 'calendar)
+  (global-set-key (kbd "<f9> d") 'dictem-run-define)
+  (global-set-key (kbd "<f9> e") 'emms-playlist-mode-go)
+  (global-set-key (kbd "<f9> E") 'emms-start)
+  (global-set-key (kbd "<f9> f") 'org-open-at-point)
+  (global-set-key (kbd "<f9> g") (lambda () (interactive) (my-switch-or-start 'gnus "*Group*")))
+  (global-set-key (kbd "<f9> j") 'dired-jump)
+  (global-set-key (kbd "<f1> o") (lambda () (interactive) (Info-goto-node "(org) Top")))
+  (global-set-key (kbd "<f9> q") 'boxquote-region)
+  (global-set-key (kbd "<f9> s") (lambda () (interactive) (my-switch-or-start 'eshell "*eshell*")))
+  (global-set-key (kbd "<f9> u") 'winner-undo)
+  (global-set-key (kbd "<f9> v") 'view-mode)
+  (global-set-key (kbd "<f9> w") (lambda () (interactive) (my-switch-or-start 'w3m "*W3M*")))
+  
+  (global-set-key (kbd "<f1> a") 'apropos)
+  (global-set-key (kbd "<f2>") 'org-capture)
+  (global-set-key (kbd "<f5>") 'webjump)
+  (global-set-key (kbd "S-<f5>") 'org-open-at-point)
+  (global-set-key (kbd "<f6>") 'org-open-at-point)
+  (global-set-key (kbd "<f7>") (lambda () (interactive) (my-switch-or-start 'gnus "*Group*")))
+  (global-set-key (kbd "<f8>") 'ido-switch-buffer)
+  (global-set-key (kbd "S-<f8>") 'ibuffer)
+  (global-set-key (kbd "<f10>") 'org-agenda)
+;  (global-set-key (kbd "<f11>") 'my-anything)
+  (define-prefix-command 'my-anything-map)
+  (global-set-key (kbd "<f11>") 'my-anything-map)
+  (global-set-key (kbd "S-<f11>") 'my-anything-everything) ; inconsistent keybinding?! C-f11?
+  (global-set-key (kbd "<f12>") 'bbdb)
+  
+  (define-key my-anything-map (kbd "t") 'anything-top)
+  (define-key my-anything-map (kbd "a") 'anything-apt)
+  (define-key my-anything-map (kbd "l") 'anything-locate)
+  (define-key my-anything-map (kbd "x") 'anything-M-x)
+  (define-key my-anything-map (kbd "b") 'anything-for-buffers)
+  (define-key my-anything-map (kbd "m") 'anything-all-mark-rings)
+  (define-key my-anything-map (kbd "f") 'anything-find-files)
+
+  (defalias 'dfr 'delete-frame)
+  (defalias 'ddt 'dired-details-toggle)
+  (defalias 'tmm 'transient-mark-mode)
+  (defalias 'mbm 'menu-bar-mode)
+  (defalias 'vm 'view-mode)        ;; We need more of these ;)
+  (defalias 'cr 'comment-region)   ;; The work in eshell, too !
+  (defalias 'ur 'uncomment-region)
+  (defalias 'ib 'ibuffer)
+  (defalias 'ibuffer-list-buffers 'list-buffer)
+  (defalias 'ems 'emms-stop)
+  
+  ;;(global-set-key (kbd "<tab>") 'hippie-expand)
+  ;;(require 'smex)
+  ;;(add-hook 'after-init-hook 'smex-initialize)
+  ;;(global-set-key (kbd "S-<f15>") 'smex)
+  ;;(global-set-key (kbd "M-x") 'smex)
+  ;;(global-set-key (kbd "M-X") 'smex-major-mode-commands)
+  ;;(setq smex-save-file "~/.emacs.d/smex-items")
+  ;;(global-set-key (kbd "<f15>") 'event-apply-super-modifier)
+  ;;(define-key function-key-map [(f17)] 'event-apply-super-modifier) 
+  ;;(global-set-key "\C-xm" 'browse-url-at-point)
+  
+  (message "DONE -  KEYBINDINGS") 
+#+end_src
+* ColorTheme
+#+begin_src emacs-lisp
+  (add-to-list 'load-path "~/config")
+  (require 'color-theme)
+  (require 'my-colors-nb)
+  (color-theme-initialize)
+  ;;(color-theme-zenburn)
+  (color-theme-my-dark-nb)
+  (message "DONE - COLORTHEME setup") 
+#+end_src
+* Uniquify
+#+begin_src emacs-lisp
+  (require 'uniquify)
+  (setq uniquify-buffer-name-style 'forward
+        uniquify-after-kill-buffer-p t ; rename after killing uniquified
+        ;;uniquify-buffer-name-style 'reverse
+        ;;setq uniquify-separator "/"
+        uniquify-ignore-buffers-re "^\\*") ; don't muck with special buffers
+  (message "DONE - UNIQUIFY setup") 
+#+end_src  
+* Yaoddmuse
+#+begin_src emacs-lisp
+  (require 'yaoddmuse-extension)
+  
+  (defun my-eshell-clear ()
+    "Mimics the behavior of clear"
+    (interactive)
+    (recenter 0)
+    ;;(end-of-line)
+    )
+  
+  (setq yaoddmuse-browse-function 'yaoddmuse-browse-page-in-w3m)
+  (message "DONE - YAODDMUSE setup") 
+#+end_src
+* Misc
+#+begin_src emacs-lisp
+  (add-to-list 'load-path "~/elisp/ioccur/")
+  (add-to-list 'load-path "~/elisp/org-buffers/")
+  (require 'ioccur)
+  (require 'woman)
+  (require 'paste2)
+  (require 'smallurl)
+  (require 'org-buffers)
+  
+  (menu-bar-mode 0)
+  (tool-bar-mode 0)
+  (winner-mode 1)
+  (blink-cursor-mode -1)
+  (auto-compression-mode t)
+  (show-paren-mode 1)
+  (icomplete-mode t)
+  (display-time)
+  (browse-kill-ring-default-keybindings)
+  (transient-mark-mode -1)
+  (set-scroll-bar-mode nil)
+  (desktop-save-mode 1)
+  (server-mode)
+  
+  (add-hook 'before-save-hook 
+            '(lambda ()
+               (setq buffer-backed-up nil)))
+  
+  ;; Making emacs and screen compatible
+  ;; see: /usr/share/doc/screen/FAQ.gz
+  (if (and  (getenv "STY") (not window-system))
+      (global-unset-key "\C-z"))
+  
+  (fset 'yes-or-no-p 'y-or-n-p)
+  ;; Backup
+  (defvar backup-dir (expand-file-name "~/.emacs.d/ebackup/"))
+  (defvar autosave-dir (expand-file-name "~/.emacs.d/eautosave/"))
+  (setq backup-directory-alist (list (cons ".*" backup-dir))
+        auto-save-list-file-prefix autosave-dir
+        auto-save-file-name-transforms `((".*" ,autosave-dir t))
+        x-select-enable-clipboard t
+        fill-column 72
+        auto-fill-mode 1
+        visible-bell t
+        inhibit-startup-message t
+        initial-scratch-message "Notes"
+        default-major-mode 'text-mode
+        display-time-24hr-format t
+        version-control t
+        delete-old-versions 1
+        kept-new-versions 50
+        kept-old-versions 50
+        backup-by-copying t
+        auto-save-interval 100
+        auto-save-timeout 10                ; save after 10 seconds of idle time
+        large-file-warning-threshold 20000000
+        desktop-save 'if-exists
+        mark-ring-max 32
+        global-mark-ring-max 64
+        browse-kill-ring-quit-action 'bury-buffer
+        kill-do-not-save-duplicates t
+        kill-ring-max 180
+        echo-keystrokes 0.01
+        debian-bug-always-CC-myself t
+        mail-host-address ""
+        message-required-mail-headers (quote (From Subject Date (optional . In-Reply-To) (optional . User-Agent)))
+        message-required-news-headers (quote (From Newsgroups Subject Date Message-ID (optional . Organization) (optional . User-Agent)))
+        user-full-name ""
+        user-mail-address ""
+        set-mark-command-repeat-pop t
+        show-paren-style 'parenthesis
+        mouse-yank-at-point t
+        tramp-default-user my-default-user
+        auto-image-file-mode 1
+        undo-limit 30000
+        sentence-end-dou2ble-space nil)
+  
+  
+  
+  ;;(mouse-avoidance-mode 'animate)
+  ;;(set-face-background 'hl-line "#330")
+  ;; other nice background colors: #222, #111
+  ;;(column-number-mode t)
+  ;;(line-number-mode t)
+  ;; I like iswitchb
+  ;;(iswitchb-mode t)
+  ;;(setq default-major-mode 'org-mode)
+  ;;(add-hook 'text-mode-hook 'turn-on-auto-fill)
+  ;;(set-background-color "black")
+  ;;(set-foreground-color "green")
+  ;;(bar-cursor-mode t)
+  (message "DONE - MISC setup") 
+#+end_src
+* Helperfunctions
+#+begin_src emacs-lisp
+(defun wc-buffer ()
+"Print number of words in Buffer"
+(interactive)
+(shell-command-on-region (point-min) (point-max) "wc -w"))
+
+; http://www.emacswiki.org/emacs/TransposeWindows
+(defun my-transpose-windows (arg)
+   "Transpose the buffers shown in two windows."
+   (interactive "p")
+   (let ((selector (if (>= arg 0) 'next-window 'previous-window)))
+     (while (/= arg 0)
+       (let ((this-win (window-buffer))
+             (next-win (window-buffer (funcall selector))))
+         (set-window-buffer (selected-window) next-win)
+         (set-window-buffer (funcall selector) this-win)
+         (select-window (funcall selector)))
+       (setq arg (if (plusp arg) (1- arg) (1+ arg))))))
+
+#+end_src
+* Testing Area
+#+begin_src emacs-lisp
+  ;;;;;;;;;;;;;;;;; testing area
+  ;;
+  ;; Stuff stays here for a while, until I am certain a) it works and b) I like it.
+  ;;
+  (add-to-list 'load-path "~/elisp/google-maps/")
+  (require 'google-maps)
+  
+  (autoload 'paredit-mode "paredit"
+      "Minor mode for pseudo-structurally editing Lisp code."
+       t)
+  ;(autoload 'paredit-mode "paredit"
+  ;      "Minor mode for pseudo-structurally editing Lisp code." t)
+  ;    (add-hook 'emacs-lisp-mode-hook       (lambda () (paredit-mode +1)))
+  ;    (add-hook 'lisp-mode-hook             (lambda () (paredit-mode +1)))
+  ;    (add-hook 'lisp-interaction-mode-hook (lambda () (paredit-mode +1)))
+  
+  (defun insert-date()
+  "Insert a time-stamp according to locale's date and time format."
+  (interactive)
+  (insert (format-time-string "%a, %e %b %Y, %k:%M" (current-time))))
+  
+  (require 'org-learn)
+  (add-to-list 'load-path "~/elisp/org-drill/")
+  (require 'org-drill)
+  (setq org-learn-always-reschedule t)
+  (require 'org-collector)
+  
+  ;; One frame to rule them all
+  (setq ediff-window-setup-function 'ediff-setup-windows-plain)
+  
+  (message "DONE - Testing") 
+#+end_src
+* ;;; Lots of goodies found here: http://www.mygooglest.com/fni/dot-emacs.html
+
+
+;;; Lots of goodies found here: http://www.mygooglest.com/fni/dot-emacs.html
+;;; Check out each bit later! Adopt the 'link to info for every bit' style!
+
+
+
+
+
+;(require 'org-publish)
+;(setq org-publish-project-alist
+;      '(("org-notes"
+;      :base-directory "~/life/"
+;      :base-extension "org"
+;      :publishing-directory "~/tmp/txt/homepage/"
+;      :recursive t
+;      :publishing-function org-publish-org-to-html
+;      :headline-levels 4             ; Just the default for this project.
+;      :auto-preamble t
+;      )
+;      ("org-static"
+;      :base-directory "~/life/"
+;      :base-extension "css\\|js\\|png\\|jpg\\|gif\\|pdf\\|mp3\\|ogg\\|swf"
+;      :publishing-directory "~/tmp/txt/homepage/"
+;      :recursive t
+;      :publishing-function org-publish-attachment
+;      )
+;      ("org" :components ("org-notes" "org-static"))
+;      ))
+
+
+;;; ----[ 20.1 (info "(emacs)Incremental Search")
+
+;; always exit searches at the beginning of the expression found
+;; (add-hook 'isearch-mode-end-hook 'custom-goto-match-beginning)
+
+;; (defun custom-goto-match-beginning ()
+;;   "Use with isearch hook to end search at first char of match."
+;;   (when isearch-forward (goto-char isearch-other-end)))
+
+;;; ----[ 21.1 (info "(emacs)Undo")
+
+;; (GNUEmacs
+;;     ;; keep no more undo information once it exceeds this size
+;;     (setq undo-limit (* 4 undo-limit))  ; 4 * 20 MB (default)
+
+;;     ;; don't keep more than this much size of undo information
+;;     (setq undo-strong-limit (* 4 undo-strong-limit)))  ; 4 * 30 MB (default)
+
+;; save the personal dictionary without confirmation
+;;    (setq ispell-silently-savep t)
+
+;; `flyspell-auto-correct-word' is bound to `C-.'
+;; Press it one time to correct the word under the cursor.
+;; If several spellings are possible, they appear in the minibuffer.
+;; Just keep hitting `C-.' to replace the word with the successive
+;; suggestions.
+;; (defun my-turn-on-flyspell-english ()
+;;      "Unconditionally turn on flyspell-mode (in American English) and call `flyspell-buffer'."
+;;      (interactive)
+;;      (flyspell-mode 1)
+;;      (ispell-change-dictionary "american")
+;;      (flyspell-buffer))
+;;
+;; from Alex Schroeder
+;; (defun my-change-dictionary ()
+;;   "Change the dictionary."
+;;   (interactive)
+;;   (let ((dict (or ispell-local-dictionary ispell-dictionary)))
+;;     (setq dict (if (string= dict "francais") "american" "francais"))
+;;     (message "Switched to %S" dict)
+;;     (sit-for 0.4)
+;;     (ispell-change-dictionary dict)
+;;     (when flyspell-mode
+;;       (flyspell-delete-all-overlays)
+;;       (flyspell-buffer))))
+;; 
+;; : idee f-tasten: jede festen Sinn, aber modifiziert mit alt und ctrl, vgl.
+;;(global-set-key [(f7)] 'ispell-word)
+;;(global-set-key [(shift f7)] 'my-change-dictionary)
+;;(global-set-key [(control f7)] 'ispell-change-dictionary)
+
+;; excellent!
+;; (defun word-definition-lookup ()
+;;   "Look up the word under cursor in a browser."
+;;   (interactive)
+;;   (browse-url
+;;    (concat "http://www.answers.com/main/ntquery?s="
+;;            (thing-at-point 'word))))
+;;
+;; idea: word at point mit dict kombinieren!
+;;; ----[ 22.1 (info "(emacs)Basic Keyboard Macro") Use
+
+;; If you want to check the result each time before repeating, then
+;; `C-x e e e...'.
+;; If you want to repeat only N times, then `C-u N C-x e'.
+;; If you want to repeat forever or until error, then `C-u 0 C-x e'.
+
+;; <shift>-<F8>  to start recording
+;; <shift>-<F8>  again to stop recording
+;; <F8>          to call it
+
+;; (defun my-toggle-kbd-macro-recording-on ()
+;;   "Start recording a keyboard macro and toggle functionality of key binding."
+;;   (interactive)
+;;   (global-set-key [(shift f8)] 'my-toggle-kbd-macro-recording-off)
+;;   (start-kbd-macro nil))
+
+;; (defun my-toggle-kbd-macro-recording-off ()
+;;   "Stop recording a keyboard macro and toggle functionality of key binding."
+;;   (interactive)
+;;   (global-set-key [(shift f8)] 'my-toggle-kbd-macro-recording-on)
+;;   (end-kbd-macro))
+
+;; ;; execute the most recent keyboard macro
+;; (global-set-key [(f8)] 'call-last-kbd-macro)
+
+;; ;; start/stop recording a keyboard macro
+;; (global-set-key [(shift f8)] 'my-toggle-kbd-macro-recording-on)
+
+;; ;; assign a name to the last keyboard macro defined
+;; (global-set-key [(control f8)] 'name-last-kbd-macro)
+
+;; replace current buffer text with the text of the visited file on disk
+;; (defun my-revert-buffer ()
+;;   "Unconditionally revert current buffer."
+;;   (interactive)
+;;   (flet ((yes-or-no-p (msg) t))
+;;     (revert-buffer)))
+
+;; ;; key binding
+;; (global-set-key [(control f12)] 'my-revert-buffer)
+
+
+;;; ----[ 23.13 Accessing (info "(emacs)Compressed Files")
+
+;; Using the Emacs Dired utility, you can compress or uncompress a file by
+;; pressing `Z'
+;;{{{ 4.6 Selecting a (info "(tramp)Default User")
+;; default user
+;;(setq tramp-default-user "fni")
+
+;;{{{ Open a file as root, easily [from Alex Schroeder]
+
+    ;; (defvar find-file-root-prefix "/sudo:root@localhost:"
+    ;;   "*The filename prefix used to open a file with `find-file-root'.
+    ;;   This should look something like \"/sudo:root@localhost:\" (new style
+    ;;   TRAMP) or \"/[sudo:root@localhost]/\" (XEmacs or old style TRAMP).")
+
+    ;; (defvar find-file-root-history nil
+    ;;   "History list for files found using `find-file-root'.")
+
+    ;; (defvar find-file-root-hook nil
+    ;;   "Normal hook for functions to run after finding a \"root\" file.")
+
+    ;; (defun find-file-root ()
+    ;;   "*Open a file as the root user.
+    ;;   Prepends `find-file-root-prefix' to the selected file name so that it
+    ;;   maybe accessed via the corresponding tramp method."
+    ;;   (interactive)
+    ;;   (require 'tramp)
+    ;;   (let* (;; We bind the variable `file-name-history' locally so we can
+    ;;          ;; use a separate history list for "root" files.
+    ;;          (file-name-history find-file-root-history)
+    ;;          (name (or buffer-file-name default-directory))
+    ;;          (tramp (and (tramp-tramp-file-p name)
+    ;;                      (tramp-dissect-file-name name)))
+    ;;          path dir file)
+    ;;     ;; If called from a "root" file, we need to fix up the path.
+    ;;     (when tramp
+    ;;       (setq path (tramp-file-name-path tramp)
+    ;;             dir (file-name-directory path)))
+    ;;     (when (setq file (read-file-name "Find file (UID = 0): " dir path))
+    ;;       (find-file (concat find-file-root-prefix file))
+    ;;       ;; If this all succeeded save our new history list.
+    ;;       (setq find-file-root-history file-name-history)
+    ;;       ;; allow some user customization
+    ;;       (run-hooks 'find-file-root-hook))))
+
+    ;; (defface find-file-root-header-face
+    ;;   '((t (:foreground "white" :background "red3")))
+    ;;   "*Face use to display header-lines for files opened as root.")
+
+    ;; (defun find-file-root-header-warning ()
+    ;;   "*Display a warning in header line of the current buffer.
+    ;;   This function is suitable to add to `find-file-root-hook'."
+    ;;   (let* ((warning "WARNING: EDITING FILE WITH ROOT PRIVILEGES!")
+    ;;          (space (+ 6 (- (frame-width) (length warning))))
+    ;;          (bracket (make-string (/ space 2) ?-))
+    ;;          (warning (concat bracket warning bracket)))
+    ;;     (setq header-line-format
+    ;;           (propertize warning 'face 'find-file-root-header-face))))
+
+    ;; (add-hook 'find-file-root-hook 'find-file-root-header-warning)
+
+    ;; (global-set-key [(control x) (control g)] 'find-file-root))
+;;; ----[ 23.18 (info "(emacs)File Conveniences")
+
+;; show image files as images (not as semi-random bits)
+;(GNUEmacs
+;   (auto-image-file-mode 1))
+
+;;; ----[ 23.18 (info "(emacs)File Conveniences")
+
+;; show image files as images (not as semi-random bits)
+;; (GNUEmacs
+;;     (auto-image-file-mode 1))
+
+;; ;; visit a file
+;; (global-set-key [(f3)] 'find-file)
+
+;; ;; find file (or URL) at point
+;; (when (try-require 'ffap)
+
+;;     ;; don't use default key bindings, as I want some of them to be defined
+;;     ;; differently (C-x C-r, for example)
+
+;;     ;; function called to fetch an URL
+;;     (setq ffap-url-fetcher 'browse-url) ; could be `browse-url-emacs' or
+;;                                         ; `w3m-browse-url'
+
+;;     ;; visit a file
+;;     (global-set-key [(f3)] 'find-file-at-point))
+
+;; ;; setup a menu of recently opened files
+;; (when (try-require 'recentf)
+
+;; ;;;     ;; maximum number of items of the recent list that will be saved
+;; ;;;     (setq recentf-max-saved-items 30)
+
+;;     ;; file to save the recent list into
+;;     (setq recentf-save-file "~/.emacs.d/.recentf")
+
+;;     ;; maximum number of items in the recentf menu
+;;     (setq recentf-max-menu-items 30)
+
+;;     ;; to protect from tramp not correctly supported (yet) under Win32
+;;     (setq recentf-auto-cleanup 'never)
+
+;;     ;; save file names relative to my current home directory
+;;     (setq recentf-filename-handlers '(abbreviate-file-name))
+
+;;     ;; toggle `recentf' mode
+;;     (recentf-mode 1)
+
+;;     ;; add key binding
+;;     (global-set-key  [(control x) (control r)] 'recentf-open-files))
+
+;; open anything
+;; (GNUEmacs
+;;     (when (try-require 'anything-config)  ; loads `anything.el' too
+
+;;         ;; source of candidates for anything
+;;         (setq anything-sources
+;;               (list anything-c-source-locate
+;;                     anything-c-source-tracker-search
+;;                     anything-c-source-bookmarks          ;; 1
+;;                     anything-c-source-file-name-history  ;; 2
+;;                     anything-c-source-buffers            ;; 3
+;;                     anything-c-source-man-pages          ;; 4
+;;                     anything-c-source-info-pages         ;; 5
+;;                     ))
+
+;;     ;;;     (setq anything-sources
+;;     ;;;           (list
+;;     ;;;            anything-c-source-recentf
+;;     ;;;            anything-c-source-files-in-current-dir
+;;     ;;;            anything-c-source-complex-command-history
+;;     ;;;            anything-c-source-emacs-commands
+;;     ;;;            anything-c-source-emacs-functions
+;;     ;;;            anything-c-source-imenu
+;;     ;;;            anything-c-source-mac-spotlight
+;;     ;;;            anything-c-source-evaluation-result
+;;     ;;;            anything-c-source-google-suggest
+;;     ;;;            ))
+
+;;         ;; do not show more candidates than this limit from inidividual sources
+;;         (setq anything-candidate-number-limit 10)
+
+;;         ;; make anything minibuffer better input latency
+;;         (defadvice anything-check-minibuffer-input (around sit-for activate)
+;;           (if (sit-for anything-idle-delay t)
+;;               ad-do-it))
+
+;;         ;; select anything
+;;         (global-set-key [(f3)] 'anything)))
+
+;; ;; operate on buffers like Dired
+;; (when (try-require 'ibuffer)
+;;     ;; completely replaces `list-buffer'
+;;     (defalias 'ibuffer-list-buffers 'list-buffer)
+;;     (global-set-key (kbd "C-x C-b") 'ibuffer))
+
+;; ;;; ----[ 24.4 (info "(emacs)Kill Buffer")
+
+;; ;; kill buffer without confirmation (if not modified)
+;; (defun my-kill-this-buffer ()
+;;   "Kill the current buffer without confirmation (if not modified)."
+;;   (interactive)
+;;   (kill-buffer nil))
+
+;; ;; key binding
+;; (global-set-key [(f12)] 'my-kill-this-buffer)
+
+;; unique buffer names dependent on file name
+;; (when (try-require 'uniquify)
+
+;;     ;; style used for uniquifying buffer names with parts of directory name
+;;     (setq uniquify-buffer-name-style 'forward))
+;; directional window-selection routines
+;; (when (try-require 'windmove)
+;;     ;; set up keybindings for `windmove' (switch windows with S-<arrow-key>)
+;;     (windmove-default-keybindings))
+;;; ----[ 30.2 (info "(emacs)Sentences")
+
+;; a single space does end a sentence
+;(setq-default sentence-end-double-space nil)
+
+;;{{{ 7.1 Executing (info "(auctex)Commands")
+
+    ;; use PDF mode by default (instead of DVI)
+;    (setq-default TeX-PDF-mode t)
+
+;;{{{ 7.3 (info "(auctex)Debugging") Catching the errors
+    ;; don't show output of TeX compilation in other window
+;    (setq TeX-show-compilation nil)
+
+;;{{{ 8 - (info "(auctex)Multifile") Documents
+
+    ;; AUC TeX will will assume the file is a master file itself
+;    (setq-default TeX-master t)
+
+;;{{{ 9 - Automatic (info "(auctex)Parsing Files")
+
+    ;; enable parse on load (if no style hook is found for the file)
+;    (setq TeX-parse-self t)
+
+    ;; enable automatic save of parsed style information when saving
+    ;; the buffer
+;    (setq TeX-auto-save t)
+
+;;{{{ 11 - (info "(auctex)Automatic") Customization
+
+;;{{{ 11.1 (info "(auctex)Automatic Global") Customization for the Site
+
+    ;; directory containing automatically generated TeX information. Must end
+    ;; with a slash
+  ;  (setq TeX-auto-global
+;          "~/.emacs.d/auctex-auto-generated-info/")
+
+;;}}}
+
+;;{{{ 11.3 (info "(auctex)Automatic Local") Customization for a Directory
+
+    ;; directory containing automatically generated TeX information. Must end
+    ;; with a slash
+;    (setq TeX-auto-local
+ ;         "~/.emacs.d/auctex-auto-generated-info/")))
+
+;(when (try-require 'reftex)  ;; very important package (with bibtex)
+
+    ;; make a LaTeX reference (to a label) by pressing `C-c )'
+    ;; insert a label by pressing `C-c (' (or `C-('
+    ;; insert a citation by pressing `C-c [' (or `C-['
+
+    ;; hit `C-c ='; the buffer will split into 2 and in the top half you
+    ;; will see a TOC, hitting `l' there will show all the labels and cites.
+
+   ; (add-hook 'LaTeX-mode-hook 'turn-on-reftex)   ; with AUCTeX LaTeX mode
+
+    ;; turn all plug-ins on
+  ;  (setq reftex-plug-into-AUCTeX t)
+
+;;;     (setq reftex-save-parse-info t)
+
+    ;; use a separate selection buffer for each label type - so the menu
+    ;; generally comes up faster
+ ;   (setq reftex-use-multiple-selection-buffers t)
+
+;;;     (setq reftex-texpath-environment-variables
+;;;           '("./inp:/PATH/TO/YOUR/TEX/DOCUMENTS//"))
+;;;     (setq reftex-bibpath-environment-variables
+;;;           '("/PATH/TO/YOUR/BIB/FILE/"))
+;)
+
+;;; ----[ 34.3 Controlling (info "(emacs)Expanding Abbrevs")
+
+;; I am aware of packages such as `ELSE', `tempo', `skeleton', some of which
+;; do similar things. However, I believe this package does some things
+;; better than these other packages.
+;; It's particularly notable for having the easiest syntax of all, making it
+;; possible to add new snippets without careful programming, and also very
+;; nice navigation within the inserted text.
+;; Check out the demo: http://www.bloomington.in.us/~brutt/msf-abbrev.html
+
+
+;;; ----[ 38.16 (info "(emacs)Dired and Find")
+
+;; search for files with names matching a wild card pattern and Dired the
+;; output
+;(global-set-key [(control c) ?1] 'find-name-dired)
+
+;; search for files with contents matching a wild card pattern and Dired the
+;; output
+;(global-set-key [(control c) ?2] 'find-grep-dired)
+
+;; run grep via find, with user-specified arguments
+;(global-set-key [(control c) ?3] 'grep-find)
+
+;; On top of the traditional ways, there's also an add-on called Extview
+;; which opens files using outside programs, such as XPDF, based on their
+;; extension. It does this both from Dired and with `find-file'. One
+;; advantage is that using the traditional ! switch with Dired locks up
+;; Emacs until you close the other program. Extview does not and leaves
+;; Emacs free for continued used.
+;extview.el
+
+;;{{{ Muse
+
+;; How to create web page by Emacs and Muse?
+;; http://www.xshi.org/notes/WebPage.html
+
+;; restoration of the window configuration
+;    (setq bbdb-electric-p t)
+;; desired number of lines in a GNUS pop-up BBDB window
+;    (setq bbdb-pop-up-target-lines 1)
+
+    ;; default display layout
+ ;   (setq bbdb-display-layout 'multi-line)
+
+    ;; default display layout pop-up BBDB buffers
+  ;  (setq bbdb-pop-up-display-layout 'one-line)
+
+;; ; omit creation-date and timestamp from BBDB display
+;;     (setq bbdb-display-layout-alist
+;;           '((one-line          (order     . (phones notes))
+;;                                (name-end  . 24)
+;;                                (toggle    . t)
+;;                                (omit      . (net AKA mail-alias gnus-private
+;;                                              creation-date timestamp)))
+;;             (multi-line        (indention . 14)
+;;                                (toggle    . t)
+;;                                (omit      . (AKA creation-date timestamp)))
+;;             (pop-up-multi-line (indention . 14))))
+
+;;     ;; allow cycling of email addresses while completing them
+;;     (setq bbdb-complete-name-allow-cycling t)
+
+;;     ;; save the database without asking (any time it would ask)
+;;     (setq bbdb-offer-save 'auto)
+
+;;     ;; automatically add some text to the notes field of the BBDB record
+;;     (add-hook 'bbdb-notice-hook 'bbdb-auto-notes-hook)
+
+;;     ;; capture auto-notes
+;;     (setq bbdb-auto-notes-alist
+;;           ;; organization
+;;           `(("Organization" (".*" Organization 0))
+
+;;             ;; mailer
+;;             ("User-Agent" (".*" mailer 0 t))  ;; t = overwrite
+;;             ("X-Mailer" (".*" mailer 0 t))
+;;             ("X-Newsreader" (".*" mailer 0 t))
+
+;;             ;; X-Face bitmaps of the people
+;;             ("x-face" ,(list (concat "[ \t\n]*\\([^ \t\n]*\\)"
+;;                                      "\\([ \t\n]+\\([^ \t\n]+\\)\\)?"
+;;                                      "\\([ \t\n]+\\([^ \t\n]+\\)\\)?"
+;;                                      "\\([ \t\n]+\\([^ \t\n]+\\)\\)?")
+;;                              'face
+;;                              "\\1\\3\\5\\7"))))
+
+;; ;;}}}
+;; use BBDB to store PGP preferences
+    ;; (when (try-require 'bbdb-pgp)
+    ;;     ;; what to do if the recipient is not in the BBDB
+    ;;     (setq bbdb/pgp-default-action nil)))
+
+
+    ;; always display images
+;    (setq w3m-default-display-inline-images t)
+
+    ;; show favicon images if they are available
+ ;   (setq w3m-use-favicon t)
+
+    ;; ask user whether accept bad cookies or not
+    ;; (setq w3m-cookie-accept-bad-cookies 'ask)
+
+    ;; ;; list of trusted domains
+    ;; (setq w3m-cookie-accept-domains
+    ;;       '("google.com" "google.be"
+    ;;         "yahoo.com" ".yahoo.com" "groups.yahoo.com"
+    ;;         "www.dyndns.org"))
+
+    ;; enable cookies (to use sites such as Gmail)
+;    (setq w3m-use-cookies t)
+;(setq w3m-home-page "http://www.emacswiki.org/")
+;; (defun my-w3m-go-to-linknum ()
+;;   "Turn on link numbers and ask for one to go to."
+;;   (interactive)
+;;   (let ((active w3m-link-numbering-mode))
+;;     (when (not active) (w3m-link-numbering-mode))
+;;     (unwind-protect
+;; 	(w3m-move-numbered-anchor (read-number "Anchor number: "))
+;;       (when (not active) (w3m-link-numbering-mode))
+;;       (w3m-view-this-url))))
+;; (define-key w3m-mode-map [(f)] 'my-w3m-go-to-linknum)
+
+;; (define-minor-mode sensitive-mode
+;;   "For sensitive files like password lists.
+;; It disables backup creation and auto saving.
+
+;; With no argument, this command toggles the mode.
+;; Non-null prefix argument turns on the mode.
+;; Null prefix argument turns off the mode."
+
+;;   ;; the initial value
+;;   nil
+
+;;   ;; the indicator for the mode line
+;;   " Sensitive"
+
+;;   ;; the minor mode bindings
+;;   nil
+;;   (if (symbol-value sensitive-mode)
+;;       (progn
+;;         ;; disable backups
+;;         (set (make-local-variable 'backup-inhibited) t)
+;;         ;; disable auto-save
+;;         (if auto-save-default
+;;     (auto-save-mode -1)))
+;;     ;; resort to default value of backup-inhibited
+;;     (kill-local-variable 'backup-inhibited)
+;;     ;; resort to default auto save setting
+;;     (if auto-save-default
+;;         (auto-save-mode 1))))
+
+;; ;; Once the above snippet has been evaluated in Emacs, `M-x sensitive' will
+;; ;; disable backups and auto-save in the current buffer. All other buffers
+;; ;; will continue to have these features.
+
+;; ;; I usually set sensitive mode to turn on by default for files having the
+;; ;; gpg extension. The following code when put in your `.emacs' does exactly
+;; ;; that:
+
+;; (setq auto-mode-alist
+;;       (append '(("\\.gpg$" . sensitive-mode))
+;;               auto-mode-alist))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Obsolete Stuff
+;; (defalias 'dtw 'delete-trailing-whitespace) : So wird ein M-x Befehl kürzer gemacht
+;; Org Obsolete
+;;;;;;;;;;;;;;;;;;;;; Alternate TODO Sequence
+;;(add-hook 'org-mode-hook
+;;  (la(setq shell-file-name "bash")mbda ()
+;;    (modify-syntax-entry ?- "w" org-mode-syntax-table)
+;;    (modify-syntax-entry ?> "w" org-mode-syntax-table)))
+;;
+;;(setq org-todo-keywords
+;;       '((sequence "-" ">" "o" "x")))
+;;;;;;;;;;;;;;;;;;;;;
+;; APPT obsolete
+; Setup notify-send, we tell appt to use window, and replace default function
+;(setq appt-display-format 'window)
+;(setq appt-disp-window-function (function my-appt-disp-window))
+
+;(defun my-appt-disp-window (min-to-app new-time msg)                      
+;  (save-window-excursion (shell-command (concat 
+;    "/usr/bin/notify-send -t 8000 ORG '"msg "' &") nil nil)))
+;;;;;;;;;;; w3m obsolete
+;; Want to view a url? Do it with w3m! (C-x m)
+;;(setq browse-url-browser-function 'w3m-browse-url)
+;;(global-set-key "\C-xm" 'browse-url-at-point)
+;;
+;; same for dired
+;;(eval-after-load "dired"
+;; '(define-key dired-mode-map "\C-xm" 'dired-w3m-find-file))
+;;
+;;(defun dired-w3m-find-file ()
+;;  (interactive)
+;;  (require 'w3m)
+;;  (let ((file (dired-get-filename)))
+;;    (if (y-or-n-p (format "Use emacs-w3m to browse %s? "
+;;                          (file-name-nondirectory file)))
+;;        (w3m-find-file file))))
+;;
+;;OLD VERSION: Replaced by the following function: Adds support for 
+;;             hidden w3mlinks in gnus
+;; Found here: http://www.emacswiki.org/cgi-bin/wiki/JorgenSchaefersEmacsConfig
+; (defun my-choose-browser (url &rest args)
+;   (interactive "sURL: ")
+;   (if (y-or-n-p "Use external browser? ")
+;          (if (equal (face-at-point) 'w3m-anchor)
+;              (w3m-view-url-with-external-browser url)
+; 	   (browse-url-generic url))
+;     (w3m-browse-url url)))
+;
+
+
+;; ;; Found here: http://www.emacswiki.org/emacs-se/BbdbCreateRecord
+;; (defun my-bbdb-create-record ()
+;;   "Prompt for and return a completely new BBDB record.
+;; Doesn't insert it in to the database or update the hashtables, but does
+;; ensure that there will not be name collisions."
+;;   (interactive)
+;;   (bbdb-records)                        ; make sure database is loaded
+;;   (if bbdb-readonly-p
+;;       (error "The Insidious Big Brother Database is read-only."))
+;;   (let (firstname lastname net info notes addr)
+;;     (bbdb-error-retry
+;;      (progn
+;;        (let ((names (bbdb-divide-name (bbdb-read-string "Name: "))))
+;;          (setq firstname (car names)
+;;                lastname (nth 1 names)))
+;;        (when (string= firstname "")
+;;          (setq firstname nil))
+;;        (when (string= lastname "")
+;;          (setq lastname nil))))
+;;     (setq net (bbdb-split (bbdb-read-string "Mail Adressen: ") ","))
+;;     (let ((street (bbdb-read-string "Strasse: "))
+;;           zip city
+;;           (it (split-string (bbdb-read-string "PLZ und Stadt: "))))
+;;       (when (string= street "")
+;;         (setq street nil))
+;;       (when (and (stringp (car it))
+;;                  (string-match "^[0-9]+$" (car it)))
+;;         (setq zip (concat "CH-" (car it))
+;;               it (cdr it)))
+;;       (when it
+;;         (setq city (mapconcat 'identity it " ")))
+;;       (when city
+;; ;       (setq addr (addr (make-vector bbdb-address-length nil)))
+;;         (setq addr (make-vector bbdb-address-length nil))
+;;         (bbdb-address-set-location addr "Home")
+;;         (bbdb-address-set-streets addr (list street))
+;;         (bbdb-address-set-zip addr zip)
+;;         (bbdb-address-set-city addr city)
+;;         (bbdb-address-set-state addr "")
+;;         (bbdb-address-set-country addr "Schweiz")))
+;;     (setq notes (bbdb-read-string "Weitere Info: "))
+;;     (when (string= notes "")
+;;       (setq notes nil))
+;;     (when (y-or-n-p "Info mail? ")
+;;       (if notes
+;;           (setq notes `((notes . ,notes)
+;;                         (mail-alias . "info-mail")))
+;;         (setq notes '(mail-alias . "info-mail"))))
+;;     (bbdb-create (vector (or firstname nil)
+;;                          (or lastname nil)
+;;                          nil nil nil
+;;                          (when addr (list addr))
+;;                          net notes
+;;                          (make-vector bbdb-cache-length nil)))))
+
+;; (define-key bbdb-mode-map "c" 'my-bbdb-create-record)
+
+;; (defadvice bbdb-read-new-record (after wicked activate)
+;; "Prompt for the birthdate and Wedding as well."
+;; (bbdb-record-putprop ad-return-value 'anniversary
+;;       (when (y-or-n-p "Add Birthday? ")
+;;         (bbdb-read-string "Anniversary (YYYY-MM-DD): "))
+;;       (when (y-or-no-p "Add Wedding? ")
+;; 	(bbdb-read-string "Wedding: (YYYY-MM-DD): ")))
+;; (bbdb-record-putprop ad-return-value 'gnus-score))
+
+
+
+;; test epa
+;; Emacs 23: bundled EasyPG
+;;(add-to-list 'load-path "/home/xxx/elisp/epg-0.0.16")
+;;(require 'epa-setup)
+;(require 'epa-file) 
+;(require 'epa)
+;(epa-file-enable)
+
+;; test url browse extern für gnus
+;;(setq w3m-goto-article-function 'browse-url)
+;(setq w3m-goto-article-function 'fc-choose-browser)
+
+
+
+
+;(require 'erc-nick-notify)
+
+;; (global-set-key [down] (lambda ()
+;;                          (interactive)
+;;                          (next-line 1)
+;;                          (unless (eq (window-end) (point-max))
+;; 			   (scroll-up 1))))
+;; (global-set-key [up] (lambda ()
+;;                        (interactive)
+;;                        (previous-line 1)
+;;                        (unless (eq (window-start) (point-min))
+;;                          (scroll-down 1))))
+
+;; Testing!!!
+;(require 'command-frequency)
+;(command-frequency-table-load)
+;(command-frequency-mode 1)
+;(command-frequency-autosave-mode 1)
+
+;;(global-set-key (kbd "C-c i") (lambda () (interactive) (switch-or-start (lambda ()
+;;                                                                          (rcirc-connect "irc.freenode.net"))
+;;                                                                  "*irc.freenode.net*")))
+
+
+;(load "ledger")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;testing tmp/el/
+
+
+
+;; this one should bind c-c q to boxquote-region
+;;(define-key mode-specific-map [?q] 'boxquote-region)
+
+
+
+;; autosave
+; save every 100 characters typed
+
+;; (require 'one-key)
+
+;;  (defvar one-key-menu-emms-alist nil
+;;    "`One-Key' menu list for EMMS.")
+
+;;  (setq one-key-menu-emms-alist
+;;        '(
+;;          (("g" . "Playlist Go") . emms-playlist-mode-go)
+;;          (("d" . "Play Directory Tree") . emms-play-directory-tree)
+;;          (("f" . "Play File") . emms-play-file)
+;;          (("i" . "Play Playlist") . emms-play-playlist)
+;;          (("t" . "Add Directory Tree") . emms-add-directory-tree)
+;;          (("c" . "Toggle Repeat Track") . emms-toggle-repeat-track)
+;;          (("w" . "Toggle Repeat Playlist") . emms-toggle-repeat-playlist)
+;;          (("u" . "Play Now") . emms-play-now)
+;;          (("z" . "Show") . emms-show)
+;;          (("s" . "Emms Streams") . emms-streams)
+;;          (("b" . "Emms Browser") . emms-browser)))
+
+;;  (defun one-key-menu-emms ()
+;;    "`One-Key' menu for EMMS."
+;;    (interactive)
+;;    (one-key-menu "EMMS" one-key-menu-emms-alist t))
+
+;;    (global-set-key (kbd "C-c p") 'one-key-menu-emms)
+
+;(require 'yaoddmuse)
+;(setq yaoddmuse-username "")
+
+;(require 'mail-notify)
+;(run-with-timer 0 mail-notify-repeat 'mail-notify)
+;(setq mail-notify-directory "/var/spool/mail/")
+
+;(setq-default auto-fill-function 'do-auto-fill)
+
+;; (setq org-agenda-custom-commands
+;;       '(("p" "Test HA" 
+;;          ((agenda ""))
+;;          ((org-agenda-show-log nil)
+;;           (org-agenda-ndays 1)
+;;           (org-agenda-log-mode-items '(state))
+;;           (org-agenda-skip-function '(org-agenda-skip-entry-if 'regexp "HA:"))))
+;;         ;; other commands here
+;;         ("d" "Duty Tasks" 
+;;          ((agenda ""))
+;;          ((org-agenda-show-log nil)
+;;           (org-agenda-ndays 1)
+;;           (org-agenda-log-mode-items '(state))
+;;           (org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":DUTY:"))))
+;;         ("f" "Fun Tasks" 
+;;          ((agenda ""))
+;;          ((org-agenda-show-log nil)
+;;           (org-agenda-ndays 1)
+;;           (org-agenda-log-mode-items '(state))
+;;           (org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":FUN:"))))
+;;         ("s" "Studium Tasks" 
+;;          ((agenda ""))
+;;          ((org-agenda-show-log nil)
+;;           (org-agenda-ndays 1)
+;;           (org-agenda-log-mode-items '(state))
+;;           (org-agenda-skip-function '(org-agenda-skip-entry-if 'notregexp ":STUDIUM:"))))
+;; 	("w" todo "WAITING")
+;; 	("g" todo "STARTED")
+;;         ))
+
+
+
+;; (defun th-org-remember-conkeror (url)
+;;   (interactive "s")
+;;   (org-remember nil ?t)
+;;   (save-excursion
+;;     (insert "\n\n  [[" url "]]"))
+;;   (local-set-key (kbd "C-c C-c")
+;; 		 (lambda ()
+;; 		   (interactive)
+;; 		   (org-ctrl-c-ctrl-c)
+;; 		   (delete-frame nil t))))
+
+;(require 'org-protocol)
+;(setq org-remember-templates
+;   '((?t "* TODO %?\n  %U\n %i\n  %a" "~/life/organizer.org" "Inbox")
+;   (?a "* APPT: %?\n%^T\n %U\n %i\n  %a" "~/life/organizer.org" "Inbox")
+;   ("BROWSER" ?w "* %:description :browser:\n (created: %U)\n\n %c\n\n %i")))
+
+
+
+
+;; Info like keybindings for w3m **TESTTING**
+;(setq w3m-key-binding 'info)
+;(define-key w3m-mode-map "p" 'w3m-previous-buffer)
+;(define-key w3m-mode-map "n" 'w3m-next-buffer)
+
+
+;;;;;;;;;;;;;;;;; customize added stuff
+;;
+;; (custom-set-variables
+;;   ;; custom-set-variables was added by Custom.
+;;   ;; If you edit it by hand, you could mess it up, so be careful.
+;;   ;; Your init file should contain only one such instance.
+;;   ;; If there is more than one, they won't work right.
+;;  '(browse-kill-ring-quit-action (quote bury-buffer))
+;;  '(calendar-latitude 52.3)
+;;  '(calendar-longitude 13.3)
+;;  '(calendar-week-start-day 1)
+;;  '(canlock-password "d02a7246bce63ffc65c3a507a5e022c97f2e4bf1")
+;;  '(desktop-save (quote if-exists))
+;;  '(kill-do-not-save-duplicates t)
+;;  '(kill-ring-max 180)
+;;  '(mail-host-address "")
+;;  '(message-required-mail-headers (quote (From Subject Date (optional . In-Reply-To) (optional . User-Agent))))
+;;  '(message-required-news-headers (quote (From Newsgroups Subject Date Message-ID (optional . Organization) (optional . User-Agent))))
+;;  '(org-agenda-files (quote ("~/life/organizer.org")))
+;;  '(org-agenda-start-on-weekday nil)
+;;  '(org-agenda-time-grid (quote ((daily weekly today require-timed) "----------------" (800 1000 1200 1400 1600 1800 2000 2200 2400))))
+;;  '(org-deadline-warning-days 3)
+;;  '(org-modules (quote (org-bbdb org-bibtex org-gnus org-info org-jsinfo org-habit org-irc org-mew org-mhe org-rmail org-vm org-wl org-w3m)))
+;;  '(org-stuck-projects (quote ("/+PROJ-CLOS" ("TODO" "" "") nil "")))
+;;  '(socks-server (quote ("Default server" "127.0.0.1" 9050 5)) t)
+;;  '(user-full-name "")
+;;  '(user-mail-address "")
+;;  '(vc-follow-symlinks nil)
+;;  '(vc-handled-backends (quote (Hg)))
+;;  '(vc-make-backup-files t))
+;; (custom-set-faces
+;;   ;; custom-set-faces was added by Custom.
+;;   ;; If you edit it by hand, you could mess it up, so be careful.
+;;   ;; Your init file should contain only one such instance.
+;;   ;; If there is more than one, they won't work right.
+;;  '(default ((t (:inherit nil :stipple nil :background "black" :foreground "WhiteSmoke" :inverse-video nil :box nil :strike-through nil :overline nil :underline nil :slant normal :weight normal :height 100 :width normal :foundry "unknown" :family "DejaVu Sans Mono"))))
+;;  '(erc-input-face ((t (:foreground "grey"))))
+;;  '(gnus-cite-1 ((((class color) (background dark)) (:foreground "orange"))))
+;;  '(gnus-cite-2 ((((class color) (background dark)) (:foreground "red"))))
+;;  '(gnus-cite-3 ((((class color) (background dark)) (:foreground "magenta"))))
+;;  '(org-agenda-done ((((class color) (min-colors 16) (background dark)) (:foreground "DimGray"))))
+;;  '(org-done ((t (:foreground "DimGray" :weight bold))))
+;;  '(org-todo ((t (:foreground "firebrick3" :weight bold)))))
+;; (put 'dired-find-alternate-file 'disabled nil)
+
