@@ -25,10 +25,6 @@ export PATH="$HOME/scripts:$PATH"
 export EDITOR="emacsclient"
 export GIT_EDITOR=$EDITOR
 
-# TODO: check if they actually work
-# alias dell_toff='synclient TouchpadOff=1'
-# alias dell_ton='synclient TouchpadOff=0'
-
 export BROWSER=brave
 
 # source ~/.autoenv/activate.sh
