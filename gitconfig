@@ -27,7 +27,7 @@
 	pullff = pull --ff-only
 	st = status
  	dh1 = diff HEAD~1
-	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative 
+	lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative
 	#TODO: make it more interesting for example generating the pdf
 	#directly
 	graphviz = "!f() { echo 'digraph git {' ; git log --pretty='format:  %h -> { %p }' \"$@\" | sed 's/[0-9a-f][0-9a-f]*/\"&\"/g' ; echo '}'; }; f"
@@ -41,8 +41,8 @@
 	smudge = git media smudge %f
 [rerere]
 	enabled = true
-[commit]
-	gpgsign = true
+# [commit]
+# 	gpgsign = true
 
 
 # Local Variables:
