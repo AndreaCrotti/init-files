@@ -1,0 +1,63 @@
+;; The deps.edn file describes the information needed to build a classpath.
+;;
+;; When using the `clojure` or `clj` script, there are several deps.edn files
+;; that are combined:
+;; - install-level
+;; - user level (this file)
+;; - project level (current directory when invoked)
+;;
+;; For all attributes other than :paths, these config files are merged left to right.
+;; Only the last :paths is kept and others are dropped.
+
+{
+  ;; Paths
+  ;;   Directories in the current project to include in the classpath
+
+  ;; :paths ["src"]
+
+  ;; External dependencies
+
+  ;; :deps {
+  ;;   org.clojure/clojure {:mvn/version "1.9.0"}
+  ;; }
+
+  ;; Aliases
+	;;   resolve-deps aliases (-R) affect dependency resolution, options:
+	;;     :extra-deps - specifies extra deps to add to :deps
+	;;     :override-deps - specifies a coordinate to use instead of that in :deps
+	;;     :default-deps - specifies a coordinate to use for a lib if one isn't found
+	;;   make-classpath aliases (-C) affect the classpath generation, options:
+	;;     :extra-paths - vector of additional paths to add to the classpath
+	;;     :classpath-overrides - map of lib to path that overrides the result of resolving deps
+
+  ;; :aliases {
+  ;;   :deps {:extra-deps {org.clojure/tools.deps.alpha {:mvn/version "0.2.196"}}}
+  ;;   :test {:extra-paths ["test"]}
+  ;; }
+ :deps {com.clojure-goes-fast/clj-async-profiler {:mvn/version "0.4.1"}}
+
+ :aliases {:reveal {:extra-deps {vlaaad/reveal {:mvn/version "1.1.164"}}
+                    :main-opts ["-m" "vlaaad.reveal" "repl"]
+                    ;; :ns-default vlaaad.reveal
+                    ;; :exec-fn repl
+                    }
+           :vizns
+           {:deps {io.dominic/vizns {:git/url "https://github.com/SevereOverfl0w/vizns.git"
+                                     :sha "fb2391a4af24246ac4e46f3a573970ba5b7c92de"}}
+            :main-opts ["-m" "io.dominic.vizns.core"]}
+
+           :carve {:extra-deps {borkdude/carve
+                                {:local/root "/home/andrea/projects/forks/carve"}
+                                #_{:git/url "https://github.com/borkdude/carve"
+                                 :sha "e9e2b1fbdd337b989c65a1983a1b3f72e310c970"}}
+                   :main-opts ["-m" "carve.main"]}
+           :morpheus {:extra-deps {thomasa/morpheus {:git/url "https://github.com/benedekfazekas/morpheus.git"
+                                                     :sha "6fd42132caf63691eaa5a9ecf236c63986b07c88"}}
+                      :main-opts ["-m" "thomasa.morpheus.main"]}}
+  ;; Provider attributes
+
+  ;; :mvn/repos {
+  ;;   "central" {:url "https://repo1.maven.org/maven2/"}
+  ;;   "clojars" {:url "https://clojars.org/repo"}
+  ;; }
+}
