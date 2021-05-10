@@ -36,7 +36,9 @@
   ;; }
  :deps {com.clojure-goes-fast/clj-async-profiler {:mvn/version "0.4.1"}}
 
- :aliases {:reveal {:extra-deps {vlaaad/reveal {:mvn/version "1.1.164"}}
+ :aliases {:outdated {:extra-deps {olical/depot {:mvn/version "RELEASE"}}
+                      :main-opts ["-m" "depot.outdated.main"]}
+           :reveal {:extra-deps {vlaaad/reveal {:mvn/version "1.1.164"}}
                     :main-opts ["-m" "vlaaad.reveal" "repl"]
                     ;; :ns-default vlaaad.reveal
                     ;; :exec-fn repl
